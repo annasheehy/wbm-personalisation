@@ -16,7 +16,7 @@ function F = fastingTargetFVA(model, rxns, varargin)
 %
 % INPUT
 %   model   whole-body model (e.g. the fasted Harvey/Harvetta from setFastingConstraints)
-%   rxns    cell/string array of reaction ids
+%   rxns    cell/string array of reaction ids, or signed sums of them (see netExchange)
 %
 % Name-Value options (defaults identical to calculateModelBMR):
 %   'brainATPfloor'  3500    lb on reactions matching 'Brain_DM_atp'
@@ -51,13 +51,13 @@ F = table(string(rxns(:)), nan(n,1), nan(n,1), nan(n,1), nan(n,1), nan(n,1), ...
     'VariableNames', {'rxn','fvaMin','fvaMax','statMin','statMax','seconds'});
 
 for k = 1:n
-    idx = find(strcmp(m.rxns, rxns{k}), 1);
+    [idx, coef] = netExchange(m.rxns, rxns{k});         % one reaction or a signed sum
     if isempty(idx)
         warning('fastingTargetFVA:missing', 'Reaction "%s" not in model - skipped. Check against model.rxns.', rxns{k});
         continue
     end
     t0 = tic;
-    m.c(:) = 0;  m.c(idx) = 1;
+    m.c(:) = 0;  m.c(idx) = coef;
     solMin = optimizeCbModel(m, 'min');
     solMax = optimizeCbModel(m, 'max');
     F.statMin(k) = solMin.stat;  F.statMax(k) = solMax.stat;

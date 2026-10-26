@@ -61,17 +61,20 @@ else
 end
 
 Tt = fastingLiteratureTargets([], 'male');
-if exist(fvaData, 'file')
-    load(fvaData, 'fvaM', 'fvaF');
+rl = unique(cellstr(Tt.rxn(strlength(Tt.rxn) > 0)), 'stable');
+fvaM = [];  fvaF = [];
+if exist(fvaData, 'file'), load(fvaData, 'fvaM', 'fvaF'); end
+todo = rl;
+if ~isempty(fvaM), todo = rl(~ismember(rl, cellstr(fvaM.rxn))); end
+if isempty(todo)
     fprintf('FVA loaded from cache\n');
 else
-    % needs COBRA + Gurobi; ~1 min per reaction on the 80k-reaction WBM
-    fprintf('No FVA cache - computing (this is the slow step).\n');
+    % needs COBRA + Gurobi; ~1 min per target on the 80k-reaction WBM
+    fprintf('FVA for %d target(s) not in the cache (the slow step).\n', numel(todo));
     changeCobraSolver('gurobi', 'LP', 0);
     mdl = load(fullfile(resPath,'ckpt_feasibleModels.mat'), 'maleFast', 'femaleFast');
-    rl  = unique(cellstr(Tt.rxn(strlength(Tt.rxn) > 0)), 'stable');
-    fvaM = fastingTargetFVA(mdl.maleFast,   rl);
-    fvaF = fastingTargetFVA(mdl.femaleFast, rl);
+    fvaM = [fvaM; fastingTargetFVA(mdl.maleFast,   todo)];
+    fvaF = [fvaF; fastingTargetFVA(mdl.femaleFast, todo)];
     fvaConditions = 'fasted models, brain>=3500, heart>=1000, Whole_body_objective_rxn=1';
     save(fvaData, 'fvaM', 'fvaF', 'fvaConditions');
 end
@@ -91,13 +94,13 @@ for s = 1:2
     d = D.(sexes{s});  f = FVA.(sexes{s});
     for k = 1:numel(rows)
         r = rows(k);
-        i = find(strcmp(d.rxns, char(T.rxn(r))), 1);
+        [i, c] = netExchange(d.rxns, T.rxn(r));         % one reaction or a signed sum (net release)
         if isempty(i)
             warning('fastingFigures: reaction %s not in model - row skipped', T.rxn(r));
             continue
         end
         sgn = 1; if strcmp(T.expectDir(r), 'uptake'), sgn = -1; end
-        if ~d.posIsRelease(i), sgn = -sgn; end          % reaction written the other way round
+        if isscalar(i) && ~d.posIsRelease(i), sgn = -sgn; end   % reaction written the other way round
         expMid = sqrt(T.litLow(r) * T.litHigh(r));
         j = find(f.rxn == T.rxn(r), 1);
         fv = sort(sgn * [f.fvaMin(j) f.fvaMax(j)]) / expMid;
@@ -107,14 +110,15 @@ for s = 1:2
         if strlength(T.source(r)) == 0, a.label = [a.label ' ' char(8224)]; end
         a.rxn    = char(T.rxn(r));
         a.sex    = sexes{s};
-        a.valFed = d.vFed(i);   a.valFast = d.vFast(i);
+        a.valFed = c' * d.vFed(i);   a.valFast = c' * d.vFast(i);
         a.litLow = T.litLow(r); a.litHigh = T.litHigh(r);
         a.source = char(T.source(r));  a.nativeUnit = char(T.nativeUnit(r));
         a.nativeLow = T.nativeLow(r);  a.nativeHigh = T.nativeHigh(r);
-        a.lbFast = d.lbFast(i);  a.ubFast = d.ubFast(i);
+        a.lbFast = NaN;  a.ubFast = NaN;   % bounds are defined for single reactions only
+        if isscalar(i), a.lbFast = d.lbFast(i);  a.ubFast = d.ubFast(i); end
         a.fvaMin = f.fvaMin(j);  a.fvaMax = f.fvaMax(j);
         a.sgn = sgn;                       % +1 if a positive flux is the expected direction
-        a.ratioFast = sgn * d.vFast(i) / expMid;
+        a.ratioFast = sgn * a.valFast / expMid;
         a.bandLo = T.litLow(r)/expMid;  a.bandHi = T.litHigh(r)/expMid;
         a.fvaLo  = fv(1);  a.fvaHi = fv(2);
         % Agreement by construction: if FVA cannot leave the literature band, the model

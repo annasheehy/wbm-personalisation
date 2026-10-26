@@ -62,17 +62,18 @@ for k = 1:2
     s = sexes{k};  T = fastingLiteratureTargets([], s);  d = D.(s);  f = FVA.(s);
     for n = 1:numel(rows)
         r = rows(n);
-        i = find(strcmp(d.rxns, char(T.rxn(r))), 1);  j = find(f.rxn == T.rxn(r), 1);
+        [i, c] = netExchange(d.rxns, T.rxn(r));  j = find(f.rxn == T.rxn(r), 1);
         sgn = 1;  if strcmp(T.expectDir(r), 'uptake'), sgn = -1; end
-        if ~d.posIsRelease(i), sgn = -sgn; end
+        if isscalar(i) && ~d.posIsRelease(i), sgn = -sgn; end     % single reaction written the other way round
+        v = sgn * (c' * d.vFast(i));                              % a signed sum is already net release
         fv = sort(sgn * [f.fvaMin(j) f.fvaMax(j)]);
         B(n).label = char(T.label(r));  B(n).rxn = char(T.rxn(r));
         B(n).noSource = strlength(T.source(r)) == 0;  B(n).source = char(T.source(r));
         B(n).(s).lit = [T.litLow(r) T.litHigh(r)];
-        B(n).(s).basal = sgn * d.vFast(i);
+        B(n).(s).basal = v;
         B(n).(s).fva = fv;
-        B(n).(s).verdict = plainVerdict(sgn * d.vFast(i), fv, [T.litLow(r) T.litHigh(r)]);
-        [B(n).(s).symBasal, B(n).(s).symFeasible] = rangeSymbols(sgn * d.vFast(i), fv, [T.litLow(r) T.litHigh(r)]);
+        B(n).(s).verdict = plainVerdict(v, fv, [T.litLow(r) T.litHigh(r)]);
+        [B(n).(s).symBasal, B(n).(s).symFeasible] = rangeSymbols(v, fv, [T.litLow(r) T.litHigh(r)]);
     end
 end
 tf = fopen(fullfile(tabPath, 'fastingBenchmarks.tex'), 'w');
@@ -96,7 +97,8 @@ end
 fprintf(tf, '\\bottomrule\n\\end{tabular}\n');
 src = unique({B(~[B.noSource]).source}, 'stable');
 fprintf(tf, ['\\caption[Fasted models compared with fluxes measured in humans]{\\textbf{Organ exchange fluxes of the fasted models compared with the same fluxes measured in humans after an overnight to 24~h fast.} ' ...
-    'Measured: range reported in humans \\cite{%s}. All values are in the direction named, so an uptake is a positive uptake. ' ...
+    'Measured: range reported in humans \\cite{%s}. All values are in the direction named, so an uptake is a positive uptake and a negative value means the opposite direction. ' ...
+    'Endogenous glucose production (liver and kidney), renal glucose release and hepatic alanine uptake are net exchanges over all blood compartments. ' ...
     'QP-FBA: flux in the basal flux distribution. FVA range: smallest and largest possible flux. ' ...
     'Within measured range: $\\checkmark$ within it, $\\downarrow$ below it, $\\uparrow$ above it; for FVA, $\\times$ means no possible flux lies in it. ' ...
     'Imposed: the measured range is a bound of the model, so the model matches it by construction.%s}\n'], ...

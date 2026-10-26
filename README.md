@@ -36,7 +36,7 @@ The project folder holds the inputs and receives the outputs:
 | Folder | Contents |
 |---|---|
 | `common/` | BMR from the basal flux distribution (`calculateModelBMR`), flux ranges under BMR conditions (`fastingTargetFVA`), dependent physiological parameters (`recalcDependentParams`), paths (`persWBMpaths`) |
-| `fasting/` | control (fed) and fasted models, comparison with fluxes measured in fasting humans, tests of adipose glycerol release |
+| `fasting/` | control (fed) and fasted models, comparison with fluxes measured in fasting humans |
 | `metabolomics/` | personalisation with synthetic blood metabolite profiles: bounds changed, feasibility, crossed bounds |
 | `inputEffects/` | effect of each physiological parameter and metabolite on its own; height through cardiac output and blood volume |
 | `active/` | one hour of running |
@@ -55,7 +55,6 @@ All scripts start from the models built by `fastingWBM.m`.
 | 6 | `inputEffects/oatBMRdecomposition.m` | BMR change with heart rate and haematocrit, by reaction and organ |
 | 7 | `inputEffects/heightCardiacOutput.m` | models with cardiac output from height and personalised blood volume |
 | 8 | `active/activeWBM.m` | table of extra muscle work and the run |
-| 9 | `fasting/fastingAdiposeFix.m` | tests of adipose glycerol release in the fasted models |
 
 `fasting/fastingWBM_investigations.m` and `fasting/femaleBrainATP_investigation.m` contain the tests of amino acid release and phosphate uptake that set the fasted state.
 
