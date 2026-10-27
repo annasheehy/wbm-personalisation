@@ -27,7 +27,8 @@ The project folder holds the inputs and receives the outputs:
 |---|---|
 | `references/` | `healthyReferenceValues.csv` (blood metabolite values from the published studies) and `healthyPhysiologyRanges.csv` (ranges of the physiological inputs), provided in the Supplementary Material |
 | `results/` | checkpoints, CSV files and figures written by the scripts |
-| `ThesisChapter/LateX/Tables`, `Figures` | LaTeX tables and figures of the chapter |
+| `ThesisChapter/LateX` | the chapter (`main.tex`, one file) and its `Figures` |
+| `results/latex` | LaTeX tables and the appendix written by the scripts, to be pasted into `main.tex` |
 
 ## Code
 
