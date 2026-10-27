@@ -1,8 +1,8 @@
 function p = persWBMpaths()
 % Folders used by the persWBM scripts. The project folder holds the literature input
 % tables (references/), the results (results/) and the manuscript (ThesisChapter/LateX,
-% one main.tex), which receives the figures. Generated LaTeX tables and the appendix are
-% written to results/latex, to be pasted into main.tex. It is taken from the environment variable
+% main.tex and appendix_chapter5.tex), which receives the figures and the appendix. Generated
+% LaTeX tables are written to results/latex, to be pasted into main.tex. It is taken from the environment variable
 % PERSWBM_PROJECT (set it with setupPersWBM(folder)), or else from the author's machines.
 %
 % OUTPUT: p.project, p.references, p.results, p.latex, p.tables, p.figures

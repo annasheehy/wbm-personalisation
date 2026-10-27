@@ -1,6 +1,6 @@
 %% supplementaryMaterial.m
 % Thesis Ch5: supplementary material from the saved inputs and results (no solves).
-%   results/latex/appendix_chapter5.tex         Tables S1-S9 for the thesis appendix (pasted into main.tex)
+%   ThesisChapter/LateX/appendix_chapter5.tex   Tables S1-S9 for the thesis appendix (input by main.tex)
 %   results/supplementary/SupplementaryData_Ch5_Inputs.xlsx    healthy values, ranges, benchmarks, cohort
 %   results/supplementary/SupplementaryData_Ch5_Results.xlsx   Tables S4-S9 and the full results
 % Run after the other scripts (README run order); needs oatBMRdecomposition.csv and
@@ -258,8 +258,7 @@ desc = struct( ...
 writeBook(fullfile(outPath, 'SupplementaryData_Ch5_Inputs.xlsx'), X.in, desc);
 writeBook(fullfile(outPath, 'SupplementaryData_Ch5_Results.xlsx'), X.res, desc);
 
-if ~exist(P.tables, 'dir'), mkdir(P.tables); end
-tf = fopen(fullfile(P.tables, 'appendix_chapter5.tex'), 'w', 'n', 'UTF-8');
+tf = fopen(fullfile(P.latex, 'appendix_chapter5.tex'), 'w', 'n', 'UTF-8');
 fprintf(tf, '%% Supplementary tables of Chapter 5, written by supplementaryMaterial.m\n');
 fprintf(tf, '\\section*{Supplementary material}\n\\addcontentsline{toc}{section}{Supplementary material}\n');
 fprintf(tf, '\\setcounter{table}{0}\n\\renewcommand{\\thetable}{S\\arabic{table}}\n\\renewcommand{\\theHtable}{S\\arabic{table}}\n\n');
@@ -267,7 +266,7 @@ fprintf(tf, ['The full inputs and results, including the synthetic profiles, eve
     'feasibility and crossed bounds of every personalised model and the bounds set by each measured concentration, are provided as Excel workbooks.\n\n']);
 fprintf(tf, '%s\n', tex{:});
 fclose(tf);
-fprintf('Supplementary material written: %s and %s\n', fullfile(P.tables, 'appendix_chapter5.tex'), outPath);
+fprintf('Supplementary material written: %s and %s\n', fullfile(P.latex, 'appendix_chapter5.tex'), outPath);
 
 
 %% helpers -------------------------------------------------------------------------------
