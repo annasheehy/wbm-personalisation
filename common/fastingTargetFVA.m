@@ -11,8 +11,8 @@ function F = fastingTargetFVA(model, rxns, varargin)
 % coupling, diet/storage, floors) holds - i.e. whether a literature value is
 % reachable at all - which the nominal lb/ub alone cannot tell you.
 %
-% The L2 point from calculateModelBMR is the flux the model actually CHOSES; this is
-% the range it could have chosen from. Plot them together.
+% The L2 point from calculateModelBMR is the flux in the basal flux distribution; this
+% is the range of fluxes the model allows around it.
 %
 % INPUT
 %   model   whole-body model (e.g. the fasted Harvey/Harvetta from setFastingConstraints)
@@ -21,29 +21,21 @@ function F = fastingTargetFVA(model, rxns, varargin)
 % Name-Value options (defaults identical to calculateModelBMR):
 %   'brainATPfloor'  3500    lb on reactions matching 'Brain_DM_atp'
 %   'heartATPfloor'  1000    lb on reactions matching 'Heart_DM_atp'
-%   'fixObjective'   true    Whole_body_objective_rxn fixed to 1
 %
 % OUTPUT F (table): rxn, fvaMin, fvaMax, statMin, statMax, seconds
 %   fvaMin/fvaMax are NaN where a solve did not return an optimal solution (stat ~= 1),
 %   or where the reaction is not in the model (warned, never silently skipped).
 %
-% Anna Sheehy 2026. Companion to calculateModelBMR.m / fastingFigures.m.
+% Anna Sheehy 2026. Companion to calculateModelBMR.m.
 
 p = inputParser;
 addParameter(p, 'brainATPfloor', 3500, @isnumeric);
 addParameter(p, 'heartATPfloor', 1000, @isnumeric);
-addParameter(p, 'fixObjective',  true, @islogical);
 parse(p, varargin{:});
 opt = p.Results;
 
-% --- the BMR-determination model, exactly as calculateModelBMR builds it ----------
-m = model;
-m.lb(contains(m.rxns, 'Brain_DM_atp')) = opt.brainATPfloor;
-m.lb(contains(m.rxns, 'Heart_DM_atp')) = opt.heartATPfloor;
-if opt.fixObjective
-    ob = strcmp(m.rxns, 'Whole_body_objective_rxn');
-    m.lb(ob) = 1;  m.ub(ob) = 1;
-end
+% the BMR conditions of calculateModelBMR
+m = setBMRConditions(model, opt.brainATPfloor, opt.heartATPfloor);
 
 rxns = cellstr(rxns);
 n = numel(rxns);

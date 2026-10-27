@@ -20,8 +20,9 @@
 % submodules and two sessions starting together collide):
 %   sessionId = 1; nSessions = 3; metabolomicsOAT
 % Each job saves its own file in results/metabolomics/oatFVA; rerun to resume. Session 1
-% also runs two checks (control rebuild; solvePFBA QP status). Run with nSessions = 0 to
-% only combine finished jobs into the ranking, heatmap and tables.
+% also runs two checks: the control rebuild, and whether the plain min-norm QP (no lifting)
+% solves on the control. Run with nSessions = 0 to only combine finished jobs into the
+% ranking, heatmap and tables.
 %
 % Anna Sheehy 2026.
 
@@ -35,7 +36,6 @@ if ~exist('sessionId', 'var'), sessionId = 1; end
 if ~exist('nSessions', 'var'), nSessions = 1; end
 if ~exist('oatMode', 'var'), oatMode = 'fva'; end
 win    = 0.2;
-objRxn = 'Whole_body_objective_rxn';
 % Physiological inputs are set to the low and high ends of their healthy range
 % (references/healthyPhysiologyRanges.csv, healthyPhysiologyRanges.m), as the metabolites
 % are set to the 2.5th and 97.5th percentiles of theirs.
@@ -46,18 +46,7 @@ objRxn = 'Whole_body_objective_rxn';
 physInputs = {'bodyWeight', 'Body weight'; 'Height', 'Height'; 'HeartRate', 'Heart rate'; ...
               'Hematocrit', 'Haematocrit'; 'GlomerularFiltrationRate', 'GFR'; ...
               'HeightBSA', 'Height (surface-area cardiac output)'; 'UrineCreatinine', 'Urine creatinine'};
-bsaDuBois = @(W, H) 0.007184 * W^0.425 * H^0.725;                  % m2; W kg, H cm
-readout = {'Liver_EX_glc_D(e)_[bc]',     'Liver glucose'
-           'Brain_EX_glc_D(e)_[csf]',    'Brain glucose'
-           'Muscle_EX_glc_D(e)_[bc]',    'Muscle glucose'
-           'RBC_EX_glc_D(e)_[bc]',       'RBC glucose'
-           'Kidney_EX_glc_D(e)_[bc]',    'Kidney glucose'
-           'Adipocytes_EX_glyc(e)_[bc]', 'Adipose glycerol'
-           'Liver_EX_bhb(e)_[bc]',       'Liver 3-hydroxybutyrate'
-           'Brain_EX_bhb(e)_[csf]',      'Brain 3-hydroxybutyrate'
-           'Muscle_EX_ala_L(e)_[bc]',    'Muscle alanine'
-           'Liver_EX_ala_L(e)_[bc]',     'Liver alanine'
-           'EX_urea[u]',                 'Urinary urea'};
+readout = oatReadouts();                                          % 11 organ exchanges {rxn, label}
 
 P = persWBMpaths();
 fastPath  = fullfile(P.results, 'fasting');
@@ -115,17 +104,17 @@ if strcmp(oatMode, 'fva') && nSessions > 0 && sessionId == 1 && ~exist(chkFile, 
     chk = struct();
     for k = 1:2
         s = sexes{k};
-        m = buildPhysModel(raw.(s), ipar.(s), false, objRxn, Diet);   % reference rebuild
+        m = buildFedWBM(raw.(s), ipar.(s), Diet);                    % reference rebuild
         chk.(s).rebuildMaxDiff = max([abs(m.lb - ctrl.(s).lb); abs(m.ub - ctrl.(s).ub)]);
-        % solvePFBA's QP step (plain min-norm QP, no lifting) on the control
-        A = ctrl.(s);  ob = strcmp(A.rxns, objRxn);
+        % plain min-norm QP (no lifting) on the control
+        A = ctrl.(s);  ob = strcmp(A.rxns, 'Whole_body_objective_rxn');
         A.c(:) = 0;  A.c(ob) = 1;  A.osenseStr = 'max';
         t0 = tic;  solLP = optimizeWBModel(A);
         m2 = A;  m2.lb(ob) = solLP.f * (1 - 1e-4);  m2.c(:) = 0;  m2.osenseStr = 'min';
         solQP = optimizeCbModel(m2, 'min', 1e-6, 1, struct('ScaleFlag', 0, 'feasTol', 1e-4));
         chk.(s).lpStat = solLP.stat;  chk.(s).qpStat = solQP.stat;
         chk.(s).qpOrigStat = solQP.origStat;  chk.(s).seconds = toc(t0);
-        fprintf('Check %s: rebuild max |diff| %.3g; solvePFBA LP stat %d, QP stat %d (orig %s), %.0f s\n', ...
+        fprintf('Check %s: rebuild max |diff| %.3g; LP stat %d, plain min-norm QP stat %d (orig %s), %.0f s\n', ...
             s, chk.(s).rebuildMaxDiff, solLP.stat, solQP.stat, num2str(solQP.origStat), chk.(s).seconds);
     end
     save(chkFile, 'chk');
@@ -157,7 +146,8 @@ if nSessions > 0
                 else
                     ip1 = recalcDependentParams(ipar.(s), fld, val);
                 end
-                m = onLiftedControl(ctrl.(s), buildPhysModel(raw.(s), ip1, strcmp(fld, 'bodyWeight'), objRxn, Diet));
+                orgW = 'none';  if strcmp(fld, 'bodyWeight'), orgW = 'std'; end   % body weight also sets organ weights
+                m = onLiftedModel(ctrl.(s), buildFedWBM(raw.(s), ip1, Diet, orgW));
         end
         conflict = any(m.lb > m.ub + 1e-9);
         if strcmp(oatMode, 'fva')
@@ -172,8 +162,8 @@ if nSessions > 0
         else
             kcal = NaN;  stat = NaN;  v = [];
             if ~conflict
-                b = calculateModelBMR(m, 'norms', {'L2'});
-                kcal = b.L2.kcal;  stat = b.L2.stat;  v = single(b.L2.v);
+                b = calculateModelBMR(m);
+                kcal = b.kcal;  stat = b.stat;  v = single(b.v);
             end
             secs = toc(t0);
             save(jobFile(j), 'kcal', 'stat', 'v', 'val', 'conflict', 's', 'kind', 'id', 'L', 'secs');
@@ -233,7 +223,7 @@ say = @(varargin) cellfun(@(h) fprintf(h, varargin{:}), {1, fid}, 'UniformOutput
 if exist(chkFile, 'file')
     load(chkFile, 'chk');
     for k = 1:2
-        say('Check %s: control rebuild max |diff| %.3g; solvePFBA QP status %d\n', sexes{k}, ...
+        say('Check %s: control rebuild max |diff| %.3g; plain min-norm QP status %d\n', sexes{k}, ...
             chk.(sexes{k}).rebuildMaxDiff, chk.(sexes{k}).qpStat);
     end
 end
@@ -253,36 +243,6 @@ fprintf('OAT: ranking in %s\n', fullfile(resPath, 'oatRanking.csv'));
 
 
 %% Local function ----------------------------------------------------------------------
-function m = buildPhysModel(rawModel, ip, organFractions, objRxn, Diet)
-% fastingWBM.m Parts 1-2 with personalised IndividualParameters; organFractions = true
-% also recomputes organ weights and the whole-body maintenance coefficients (as persWBM).
-m = rawModel;
-if organFractions
-    [org, ~, owf, ip] = calcOrganFract(m, ip);
-    m = adjustWholeBodyRxnCoeff(m, org, owf);
-end
-m = physiologicalConstraintsHMDBbased(m, ip);
-m = changeObjective(m, objRxn);  m.osenseStr = 'max';
-m = setDietConstraints(setFeedingFastingConstraints(m, 'feeding', -1e6, 1e6), Diet);
-m.osenseStr = 'max';
-end
-
-function m = onLiftedControl(liftedCtrl, mm)
-% Put the bounds (and changed stoichiometric columns, i.e. the whole-body maintenance
-% coefficients after a body-weight change) of a model rebuilt from the raw model onto
-% the control, whose coupling constraints are already lifted. Lifting changes only the
-% coupling constraints, so the result equals lifting mm, without the slow lift.
-assert(isequal(liftedCtrl.rxns, mm.rxns) && isequal(liftedCtrl.mets, mm.mets), ...
-    'onLiftedControl: reaction or metabolite lists differ');
-m = liftedCtrl;
-m.lb = mm.lb;  m.ub = mm.ub;  m.c = mm.c;
-d = find(any(m.S ~= mm.S, 1));
-if numel(d) > 1
-    error('onLiftedControl: %d stoichiometric columns differ (expected 0 or 1): %s', numel(d), strjoin(m.rxns(d), ', '));
-end
-m.S(:, d) = mm.S(:, d);
-end
-
 function combineL2(outDir, resPath, figPath, thesisFig, panel, physInputs, ctrl, sexes)
 % Rank inputs by how much their low-to-high change alters the basal flux distribution
 % (number of reactions changed, size of the change, organs involved) and BMR.

@@ -5,16 +5,16 @@
 %
 % PARTS
 %   0  Setup (paths, solver)
-%   1  Load models + physiological constraints  (checkpointed)
-%   2  Fed baseline sanity check
-%   3  Fasting model  (setFastingConstraints — storage, ions, glycogen, choline)
-%   4  BMR analysis — model energy expenditure vs reference equations (L1 & L2)
-%   6  Summary figure (saved to resPath/fastingSummary.png)
-%   7  Fed -> fasting L2 flux changes  (the open investigation)
+%   1  Load models + physiological constraints, lift coupling constraints (checkpointed)
+%   2  Fed models: the control models of the chapter
+%   3  Fasted models (setFastingConstraints: stores released, diet closed except water
+%      and ions, endogenous phosphate, hepatic glycogen, intestinal choline)
+%   4  Fed and fasted BMR (L2, calculateModelBMR); resting brain/heart ATP limits
+%   5  Fed -> fasting organ exchange fluxes; saves ckpt_fluxL2.mat (used by
+%      fastingTables and fastingUrineCreatinine)
 %
-% Dependencies (same folder): calculateModelBMR.m (model BMR, L1 & L2);
-%   calculateBMR.m (phenomenological reference BMR, PSCM toolbox).
-% Investigation log (INV-1 to INV-6): see fastingWBM_investigations.m
+% The tests that set the fasted state (amino-acid release, phosphate) are in
+% fastingSetupTests.m.
 
 %% ==========================================================================
 %  PART 0.  SETUP
@@ -104,7 +104,7 @@ end
 
 
 %% ==========================================================================
-%  PART 2.  FED BASELINE SANITY CHECK
+%  PART 2.  FED MODELS (the control models of the chapter)
 %  ==========================================================================
 EUAverageDietNew
 maleFed   = setDietConstraints(setFeedingFastingConstraints(maleL,   'feeding', -1e6, 1e6), Diet);
@@ -136,324 +136,44 @@ fprintf('3 — feasible fasting models saved to checkpoint.\n');
 
 
 %% ==========================================================================
-%  PART 4.  BMR ANALYSIS — model energy expenditure vs reference equations
-%
-%  BMR (basal metabolic rate) is the gold-standard measure of resting energy
-%  expenditure. Thiele 2020 read it from the whole-body model as the "basal
-%  metabolic flux": impose resting energy floors, find the parsimonious resting
-%  flux, sum ATP hydrolysis across all compartments, convert to kcal/day
-%  (64 kJ/mol ATP). We compute it here (via calculateModelBMR.m) and compare to
-%  the phenomenological references (Harris-Benedict / Mifflin-St Jeor,
-%  calculateBMR.m) and the paper's archetypes (Harvey 1455, Harvetta 1344).
-%
-%  Two flux norms are reported (calculateModelBMR runs both):
-%    L2  minimise ||v||_2 (QP) — the norm used in Thiele 2020 (minNorm 1e-6).
-%         This is the value that should REPRODUCE the paper archetypes
-%         (Harvey ~1455, Harvetta ~1344): same floors, same obj=1, same ATP
-%         summation. The L2 QP is numerically hard on the 80k-rxn WBM, so
-%         calculateModelBMR lifts the coupling constraints (liftCouplingConstraints)
-%         and solves barrier-only with crossover off (Crossover=0) to converge.
-%    L1  minimise sum|v|  (LP) — always robust, but SPARSE, so it under-reads
-%         total ATP turnover (~half the L2 value). Used as the robustness
-%         cross-check; L2 is the headline once it converges.
+%  PART 4.  BMR (L2) AND RESTING ATP LIMITS
+%  BMR by the basal metabolic flux method of Thiele 2020 (calculateModelBMR): resting
+%  brain/heart ATP floors, whole-body objective fixed to 1, min ||v||_2 (QP; lifted
+%  coupling, barrier, crossover off), ATP consumption summed and converted with
+%  64 kJ/mol. The fed and fasted flux vectors are saved for Part 5.
 %  ==========================================================================
 if ~exist('maleFast', 'var'), load(feasCheckpoint); end
-R = struct();                                   % results collector for the Part 6 figure
 
-%% 4.1  Phenomenological reference BMR (Harris-Benedict / Roza / Mifflin) -----
-% calculateBMR(sex, weight_kg, height_cm, age_yr) -> [HB1919; Roza1984; Mifflin1990].
-% Harvey/Harvetta are ageless archetypes (ip*.Age = NaN); use WHO/FAO adult 30 yr.
-% For personalisation, replace with the patient's actual age.
-patientAgeM = ipMale.Age;    if isnan(patientAgeM), patientAgeM = 30; end
-patientAgeF = ipFemale.Age;  if isnan(patientAgeF), patientAgeF = 30; end
-BMRmale   = calculateBMR('male',   ipMale.bodyWeight,   ipMale.Height,   patientAgeM);
-BMRfemale = calculateBMR('female', ipFemale.bodyWeight, ipFemale.Height, patientAgeF);
-fprintf('\n4.1 — Reference BMR (kcal/day) [HB1919 / Roza1984 / Mifflin1990], age %d:\n', patientAgeM);
-fprintf('      Male   (%.0f kg, %.0f cm): %.0f / %.0f / %.0f\n', ...
-    ipMale.bodyWeight, ipMale.Height, BMRmale(1), BMRmale(2), BMRmale(3));
-fprintf('      Female (%.0f kg, %.0f cm): %.0f / %.0f / %.0f\n', ...
-    ipFemale.bodyWeight, ipFemale.Height, BMRfemale(1), BMRfemale(2), BMRfemale(3));
-R.refMale = BMRmale(:)';  R.refFemale = BMRfemale(:)';  R.archetype = [1455 1344];
-
-%% 4.2  Model BMR at the fasting stage — L1 and L2 ---------------------------
-bmrM = calculateModelBMR(maleFast);             % returns .L1 and .L2 (kcal, atp, stat, v)
-bmrF = calculateModelBMR(femaleFast);
-fprintf('\n4.2 — Model BMR at fasting stage (kcal/day):\n');
-fprintf('              L1 (LP)          L2 (QP)          Mifflin   Thiele archetype\n');
-fprintf('   Male    %6.0f (stat %2d)  %6.0f (stat %2d)   %6.0f    %d\n', ...
-    bmrM.L1.kcal, bmrM.L1.stat, bmrM.L2.kcal, bmrM.L2.stat, BMRmale(3),   1455);
-fprintf('   Female  %6.0f (stat %2d)  %6.0f (stat %2d)   %6.0f    %d\n', ...
-    bmrF.L1.kcal, bmrF.L1.stat, bmrF.L2.kcal, bmrF.L2.stat, BMRfemale(3), 1344);
-R.fastL1  = [bmrM.L1.kcal bmrF.L1.kcal];   R.fastL1stat = [bmrM.L1.stat bmrF.L1.stat];
-R.fastL2  = [bmrM.L2.kcal bmrF.L2.kcal];   R.fastL2stat = [bmrM.L2.stat bmrF.L2.stat];
-fluxFastM = bmrM.L2.v;  fluxFastF = bmrF.L2.v;   % fasting L2 flux -> Part 7 flux-change analysis
-
-%% 4.3  Model BMR across construction stages (L1) — is it stable? ------------
-% L1 only (fast, robust). base (HMDB) -> fed -> fasting. Physiology expects BMR
-% roughly stable from fed to (short) fasting, so a big jump flags a solver/model
-% issue at that stage rather than biology.
-R.stageNames = {'base','fed','fasting'};
-stageMdl     = {maleL femaleL; maleFed femaleFed; maleFast femaleFast};
-R.stageL1male = nan(1,3);  R.stageL1female = nan(1,3);
-fprintf('\n4.3 — model BMR (L1) by construction stage (kcal/day):\n');
-for s = 1:3
-    bm = calculateModelBMR(stageMdl{s,1}, 'norms', {'L1'});
-    bf = calculateModelBMR(stageMdl{s,2}, 'norms', {'L1'});
-    R.stageL1male(s)   = bm.L1.kcal;
-    R.stageL1female(s) = bf.L1.kcal;
-    fprintf('   %-8s  male %6.0f (stat %d)   female %6.0f (stat %d)\n', ...
-        R.stageNames{s}, bm.L1.kcal, bm.L1.stat, bf.L1.kcal, bf.L1.stat);
-end
-
-%% 4.3b  L2 BMR across states — reproduces the Thiele 2020 archetypes --------
-% L2 (min ||v||_2) is Thiele's actual norm, so the FED L2 value should reproduce
-% the paper archetypes (Harvey 1455, Harvetta 1344). Run L2 on base and fed for
-% both sexes; the fasting L2 is already in 4.2. (This also settled the earlier
-% L2 non-convergence: it was a solver-settings failure, not the fasting model —
-% base/fed/fasting all solve once the QP is lifted + barrier-only, crossover off.)
-fprintf('\n4.3b — L2 BMR across states (Thiele norm; fasting L2 in 4.2):\n');
-l2diag = {'base', maleL, femaleL; 'fed', maleFed, femaleFed};
-R.stageL2male = nan(1,3);  R.stageL2female = nan(1,3);   % [base fed fasting]
-for s = 1:size(l2diag,1)
-    bm2 = calculateModelBMR(l2diag{s,2}, 'norms', {'L2'});
-    bf2 = calculateModelBMR(l2diag{s,3}, 'norms', {'L2'});
-    R.stageL2male(s)   = bm2.L2.kcal;
-    R.stageL2female(s) = bf2.L2.kcal;
-    if strcmp(l2diag{s,1}, 'fed'), fluxFedM = bm2.L2.v;  fluxFedF = bf2.L2.v; end   % fed L2 flux -> Part 7
-    fprintf('   %-6s  male L2 %6.0f (stat %d)   female L2 %6.0f (stat %d)\n', ...
-        l2diag{s,1}, bm2.L2.kcal, bm2.L2.stat, bf2.L2.kcal, bf2.L2.stat);
-end
-R.stageL2male(3) = R.fastL2(1);  R.stageL2female(3) = R.fastL2(2);
-
-%% 4.4  Diagnostic: top ATP-consuming reactions (L1 fasting flux) ------------
-% Confirms the L1 solve is cycle-free: real basal ATP use spreads across
-% maintenance/ion pumps, so one reaction dominating would signal a futile cycle.
-diag4 = {'male', maleFast, bmrM; 'female', femaleFast, bmrF};
-for d = 1:size(diag4, 1)
-    mdl = diag4{d,2};  bmrS = diag4{d,3};       % each sex uses its OWN atpMets
-    if isempty(bmrS.L1.v), continue; end
-    perRxnATP  = full(-sum(min(mdl.S(bmrS.atpMets, :) .* bmrS.L1.v(:)', 0), 1));
-    [top, ord] = sort(perRxnATP, 'descend');
-    fprintf('\n4.4 — top 5 ATP-consuming reactions (%s, L1):\n', diag4{d,1});
-    for k = 1:min(5, numel(top))
-        if top(k) <= 0, break; end
-        fprintf('   %10.1f mmol/day  %s\n', top(k), mdl.rxns{ord(k)});
+%% 4.1  Fed and fasted BMR (L2) ----------------------------------------------
+mods = {maleFed, femaleFed; maleFast, femaleFast};    % rows fed / fasted, columns male / female
+state = {'fed', 'fasted'};  sexName = {'male', 'female'};
+v = cell(2, 2);
+for st = 1:2
+    for sx = 1:2
+        b = calculateModelBMR(mods{st, sx});
+        v{st, sx} = b.v;
+        fprintf('4.1 - %s %s BMR (L2): %.0f kcal/day (stat %d)\n', state{st}, sexName{sx}, b.kcal, b.stat);
     end
 end
+[fluxFedM, fluxFedF, fluxFastM, fluxFastF] = deal(v{1, 1}, v{1, 2}, v{2, 1}, v{2, 2});
 
-%% 4.5  Resting brain/heart ATP ceiling --------------------------------------
-% The BMF solve imposes resting energy floors (Brain_DM_atp >= 3500,
-% Heart_DM_atp >= 1000). If a fasting model cannot supply that much, the BMF is
-% infeasible (this is why the female fasting BMR came back stat=0). Here we ask
-% the opposite question per sex: with the whole-body objective fixed at 1, what
-% is the MAXIMUM brain/heart ATP the fasting model can supply? A ceiling below
-% the floor pinpoints the fuel bottleneck (brain runs on glucose/ketones).
-brainFloor = 3500;  heartFloor = 1000;
-sexCeil    = {'male', maleFast; 'female', femaleFast};
-R.maxBrain = nan(1,2);  R.maxHeart = nan(1,2);
-R.brainFloor = brainFloor;  R.heartFloor = heartFloor;
-fprintf('\n4.5 — resting ATP ceiling at obj=1 (max the fasting model can supply):\n');
+%% 4.2  Resting brain/heart ATP limits of the fasted models ------------------
+% The BMR solve requires Brain_DM_atp >= 3500 and Heart_DM_atp >= 1000. With the
+% whole-body objective fixed at 1, the largest ATP each organ can be supplied (LP)
+% shows whether a fasted model can meet these demands.
+sexCeil = {'male', maleFast; 'female', femaleFast};
 for c = 1:2
-    m  = sexCeil{c,2};
-    ob = strcmp(m.rxns, 'Whole_body_objective_rxn');
-    m.lb(ob) = 1;  m.ub(ob) = 1;
-    bi = contains(m.rxns, 'Brain_DM_atp');
-    hi = contains(m.rxns, 'Heart_DM_atp');
-    mB = m;  mB.c(:) = 0;  mB.c(bi) = 1;  mB.osenseStr = 'max';
-    mH = m;  mH.c(:) = 0;  mH.c(hi) = 1;  mH.osenseStr = 'max';
-    sB = optimizeWBModel(mB);
-    sH = optimizeWBModel(mH);
-    R.maxBrain(c) = sB.f;  R.maxHeart(c) = sH.f;
-    bOK = 'SHORT';  if sB.f >= brainFloor, bOK = 'OK'; end
-    hOK = 'SHORT';  if sH.f >= heartFloor, hOK = 'OK'; end
-    fprintf('   %-6s: brain max %6.0f / floor %d (%s)   heart max %6.0f / floor %d (%s)\n', ...
-        sexCeil{c,1}, sB.f, brainFloor, bOK, sH.f, heartFloor, hOK);
+    m  = setBMRConditions(sexCeil{c,2}, [], []);              % objective fixed to 1, no ATP floors
+    mB = m;  mB.c(:) = 0;  mB.c(contains(m.rxns, 'Brain_DM_atp')) = 1;  mB.osenseStr = 'max';
+    mH = m;  mH.c(:) = 0;  mH.c(contains(m.rxns, 'Heart_DM_atp')) = 1;  mH.osenseStr = 'max';
+    sB = optimizeWBModel(mB);  sH = optimizeWBModel(mH);
+    fprintf('4.2 - %-6s: brain ATP max %6.0f (demand 3500), heart ATP max %6.0f (demand 1000)\n', ...
+        sexCeil{c,1}, sB.f, sH.f);
 end
 
 
 %% ==========================================================================
-%  PART 6.  SUMMARY FIGURE   (top row: A setup, B L2 BMR-across-states vs
-%  reference; bottom row: C resting ATP ceiling, D L1-vs-L2 by state, E summary.)
-%  L2 (Thiele 2020 min-norm QP) is the validated headline and reproduces the
-%  archetypes; L1 (sparse LP) is shown as the ~2x-lower cross-check. Colour:
-%  blue ramp = nutritional state (base->fed->fasted, light->dark); greys =
-%  reference equations; blue/orange = male/female; red dashed = organ ATP demand
-%  floor. Every computed-flux panel carries a subtitle. Run Part 4 first.
-%  ==========================================================================
-if ~exist('R', 'var') || ~isfield(R, 'fastL1')
-    warning('Part 6: results struct R not populated — run Part 4 first.');
-else
-    global CBT_LP_SOLVER CBT_QP_SOLVER          % report the ACTUAL solver, not an assumption
-    lpS = CBT_LP_SOLVER;  if isempty(lpS), lpS = '?'; end
-    qpS = CBT_QP_SOLVER;  if isempty(qpS), qpS = '?'; end
-
-    % validated palette (dataviz skill, light mode)
-    cModel   = [ 42 120 214]/255;  % blue   — male
-    cFemale  = [235 104  52]/255;  % orange — female
-    blueRamp = [134 182 239; 57 135 229; 28 92 171]/255;  % base / fed / fasted (light->dark)
-    gRef     = [0.82 0.82 0.80; 0.68 0.68 0.66; 0.54 0.54 0.52; 0.38 0.38 0.36];  % refs: Mifflin/HB/Roza/Thiele (dark = archetype)
-    cFloor   = [208  59  59]/255;  % critical red — demand floor
-    cMuted   = [137 135 129]/255;  % muted ink — captions
-    cLab     = [0.28 0.28 0.28];   % value-label ink
-    cGrid    = [0.88 0.88 0.86];
-
-    figSummary = figure('Name', 'Fasting WBM summary', 'Color', 'w', ...
-                        'Position', [50 50 1550 900]);
-    sgtitle('Fasting whole-body metabolic model:  BMR analysis  (Harvey / Harvetta)', ...
-            'FontWeight','bold', 'FontSize', 13);
-
-    % --- A: setup / methods (text) ---
-    subplot(2,3,1); axis off;
-    % Read the ACTUAL fasting-knob bounds from the models so this caption never
-    % goes stale when the knobs change (hardcoded values were the bug). Uses the
-    % same reaction names Part 3 sets; AA = mode over the storage-AA muscle sinks.
-    if exist('maleFast','var') && exist('femaleFast','var')
-        rd  = @(m, r) m.lb(strcmp(m.rxns, r));
-        aaM = mode(maleFast.lb(~cellfun(@isempty,   regexp(maleFast.rxns,   '^Muscle_sink_\w+_L\(c\)$', 'once'))));
-        aaF = mode(femaleFast.lb(~cellfun(@isempty, regexp(femaleFast.rxns, '^Muscle_sink_\w+_L\(c\)$', 'once'))));
-        knobLines = {
-            sprintf('   storage-AA sinks (M %g, F %g);', aaM, aaF)
-            sprintf('   glycogen release (M %g, F %g);', rd(maleFast,'Liver_sink_glygn2(c)'), rd(femaleFast,'Liver_sink_glygn2(c)'))
-            sprintf('   intestinal choline from blood (M %g, F %g)', rd(maleFast,'sIEC_EX_chol(e)_[bc]'), rd(femaleFast,'sIEC_EX_chol(e)_[bc]')) };
-    else
-        knobLines = {'   storage-AA sinks, glycogen release,'; '   intestinal choline from blood (see Part 3)'};
-    end
-    setupTxt = [{
-        sprintf('Solver: %s (LP), %s (QP)', lpS, qpS)
-        'Harvey (male) / Harvetta (female), Thiele 2020'
-        ''
-        '\bfBase\rm  model as loaded + HMDB bounds (diet unchanged)'
-        '\bfFed\rm    current EU average diet applied (small update)'
-        '\bfFasting\rm  diet closed except water + ions;'
-        }; knobLines; {
-        ''
-        '\bfBMR\rm = \Sigma ATP hydrolysis \times 64 kJ/mol \times 0.239'
-        '   L2 = min ||v||_2  (QP; Thiele 2020 norm; HEADLINE)'
-        '        lifted + barrier (crossover off); reproduces archetypes'
-        '   L1 = min \Sigma|v|  (LP; robust cross-check; ~half L2)'
-        }];
-    text(0, 1, setupTxt, 'VerticalAlignment','top', 'FontSize', 8.5, 'Interpreter','tex');
-    title('A. Setup');
-
-    % --- B: model L2 BMR across nutritional states vs reference equations ---
-    % L2 is Thiele's norm; the fed L2 bars should land on the archetype/Mifflin
-    % references — the visual proof of reproduction (Harvey 1455, Harvetta 1344).
-    subplot(2,3,[2 3]);
-    Bdata = [R.stageL2male(1)   R.stageL2male(2)   R.stageL2male(3)   R.refMale(3)   R.refMale(1)   R.refMale(2)   R.archetype(1);
-             R.stageL2female(1) R.stageL2female(2) R.stageL2female(3) R.refFemale(3) R.refFemale(1) R.refFemale(2) R.archetype(2)];
-    b = bar(Bdata);
-    for k = 1:3, b(k).FaceColor = blueRamp(k,:); end     % base / fed / fasted (L2)
-    for k = 1:4, b(3+k).FaceColor = gRef(k,:);   end      % Mifflin / HB / Roza / Thiele archetype
-    set(gca, 'XTickLabel', {'Male (Harvey)','Female (Harvetta)'}, 'GridColor', cGrid); grid on;
-    ymaxB = max(Bdata(~isnan(Bdata))); ylim([0 ymaxB*1.18]);
-    ylabel('BMR (kcal/day)');
-    title('B. Model BMR (L2, Thiele norm) across states vs reference equations');
-    subtitle(['Model bars = L2 min-norm QP at obj=1 (Thiele 2020 norm); kcal = \SigmaATP \times 64 kJ.  ' ...
-              'Grey bars = phenomenological equations + Thiele model archetype (darkest).'], 'FontSize', 7.5, 'Color', cMuted);
-    legend({'Base (L2)','Fed (L2)','Fasted (L2)','Mifflin-St Jeor','Harris-Benedict','Roza-Shizgal','Thiele 2020'}, ...
-        'Location','northoutside', 'Orientation','horizontal', 'FontSize', 7);
-    for i = 1:numel(b)                                   % value labels
-        xe = b(i).XEndPoints; ye = b(i).YEndPoints;
-        for g = 1:numel(xe)
-            if ~isnan(ye(g)) && ye(g) > 0
-                text(xe(g), ye(g), sprintf('%.0f', ye(g)), 'HorizontalAlignment','center', ...
-                    'VerticalAlignment','bottom', 'FontSize', 6.5, 'Color', cLab);
-            end
-        end
-    end
-    % Annotate any missing fasted-L2 bar, distinguishing biological infeasibility
-    % (L1 also failed for that state) from L2 QP non-convergence (L1 solved, QP did not).
-    fastedL1 = [R.stageL1male(3) R.stageL1female(3)];
-    fastedL2 = [R.stageL2male(3) R.stageL2female(3)];
-    for gsex = 1:2
-        if isnan(fastedL2(gsex))
-            if isnan(fastedL1(gsex)), note = 'infeasible'; else, note = 'L2 n/c'; end
-            text(b(3).XEndPoints(gsex), ymaxB*0.04, note, 'Rotation',90, 'Color',cFloor, ...
-                'FontSize',7.5, 'HorizontalAlignment','left', 'VerticalAlignment','middle', 'FontWeight','bold');
-        end
-    end
-
-    % --- C: resting brain/heart ATP ceiling vs demand floor ---
-    subplot(2,3,4);
-    Cdata = [R.maxBrain(1) R.maxBrain(2); R.maxHeart(1) R.maxHeart(2)];   % rows Brain/Heart, cols M/F
-    bc = bar(Cdata); bc(1).FaceColor = cModel; bc(2).FaceColor = cFemale; hold on;
-    plot([0.55 1.45], [R.brainFloor R.brainFloor], '--', 'Color', cFloor, 'LineWidth', 1.6);
-    plot([1.55 2.45], [R.heartFloor R.heartFloor], '--', 'Color', cFloor, 'LineWidth', 1.6);
-    text(1.46, R.brainFloor, sprintf('floor %d ', R.brainFloor), 'Color',cFloor, 'FontSize',7, ...
-        'HorizontalAlignment','right', 'VerticalAlignment','bottom');
-    text(2.46, R.heartFloor, sprintf('floor %d ', R.heartFloor), 'Color',cFloor, 'FontSize',7, ...
-        'HorizontalAlignment','right', 'VerticalAlignment','bottom');
-    set(gca, 'XTickLabel', {'Brain','Heart'}, 'GridColor', cGrid); grid on;
-    ylabel('max ATP supply (mmol/day)');
-    title('C. Resting ATP the model can supply vs demand');
-    subtitle('FBA LP: maximise organ ATP demand at obj=1 (fasted model).', 'FontSize',7.5, 'Color',cMuted);
-    legend({'Male','Female'}, 'Location','north', 'FontSize',7);
-    for i = 1:numel(bc)
-        xe = bc(i).XEndPoints; ye = bc(i).YEndPoints;
-        for g = 1:numel(xe)
-            if ~isnan(ye(g)) && ye(g) > 0
-                text(xe(g), ye(g), sprintf('%.0f', ye(g)), 'HorizontalAlignment','center', ...
-                    'VerticalAlignment','bottom', 'FontSize', 6.5, 'Color', cLab);
-            end
-        end
-    end
-
-    % --- D: L1 vs L2 by state (male) — L1 under-reads ATP turnover ~2x ---
-    subplot(2,3,5);
-    Ddata = [R.stageL1male(1) R.stageL2male(1);          % rows base/fed/fasting, cols [L1 L2]
-             R.stageL1male(2) R.stageL2male(2);
-             R.stageL1male(3) R.stageL2male(3)];
-    bd = bar(Ddata); bd(1).FaceColor = blueRamp(1,:); bd(2).FaceColor = blueRamp(3,:); hold on;
-    set(gca, 'XTickLabel', {'base','fed','fasting'}, 'GridColor', cGrid); grid on;
-    ymaxD = max([Ddata(~isnan(Ddata)); 1]);  ylim([0 ymaxD*1.20]);
-    ylabel('BMR (kcal/day)');
-    title('D. L1 vs L2 by state (male): L1 under-reads ~2x');
-    subtitle(['Same model, floors, obj=1. L1 (sparse LP) finds a lower-turnover ' ...
-              'distribution than the L2 min-norm QP.'], 'FontSize',7.5, 'Color',cMuted);
-    legend({'L1  (min \Sigma|v|)','L2  (min ||v||_2)'}, 'Location','northwest', 'FontSize',7);
-    for i = 1:numel(bd)
-        xe = bd(i).XEndPoints; ye = bd(i).YEndPoints;
-        for g = 1:numel(xe)
-            if ~isnan(ye(g)) && ye(g) > 0
-                text(xe(g), ye(g), sprintf('%.0f', ye(g)), 'HorizontalAlignment','center', ...
-                    'VerticalAlignment','bottom', 'FontSize', 6.5, 'Color', cLab);
-            end
-        end
-    end
-
-    % --- E: results summary (text) — fully dynamic (no hardcoded verdicts) ---
-    subplot(2,3,6); axis off;
-    if isnan(R.stageL2female(3)), femFastL2 = 'n/c'; else, femFastL2 = sprintf('%.0f', R.stageL2female(3)); end
-    if isnan(R.stageL2male(3)),   malFastL2 = 'n/c'; else, malFastL2 = sprintf('%.0f', R.stageL2male(3)); end
-    if R.maxBrain(1) >= R.brainFloor && R.maxBrain(2) >= R.brainFloor
-        brainLine = sprintf('Both brains clear the floor (M %.0f / F %.0f vs %d).', R.maxBrain(1), R.maxBrain(2), R.brainFloor);
-    else
-        brainLine = sprintf('Brain ceiling short of floor: M %.0f / F %.0f vs %d.', R.maxBrain(1), R.maxBrain(2), R.brainFloor);
-    end
-    txt = {
-        '\bfResults summary\rm   (L2 = Thiele norm = headline)'
-        ''
-        sprintf('Fed L2:   male %.0f (Harvey 1455),  female %.0f (Harvetta 1344)', R.stageL2male(2), R.stageL2female(2))
-        sprintf('Fasting L2 (kcal):   male %s,  female %s', malFastL2, femFastL2)
-        ''
-        sprintf('L1 cross-check (sparse LP, under-reads): fasting L1 M %.0f / F %.0f.', ...
-            R.stageL1male(3), R.stageL1female(3))
-        ''
-        brainLine
-        sprintf('Heart not limiting (M %.0f / F %.0f vs %d).', R.maxHeart(1), R.maxHeart(2), R.heartFloor)
-        ''
-        'Storage-AA release set at the Part-3 value (provisional; needs justifying).'
-        };
-    text(0, 1, txt, 'VerticalAlignment','top', 'FontSize', 9, 'Interpreter','tex');
-    title('E. Summary');
-
-    exportgraphics(figSummary, fullfile(resPath, 'fastingSummary.png'), 'Resolution', 150);
-    fprintf('\n6 — summary figure saved: %s\n', fullfile(resPath, 'fastingSummary.png'));
-end
-
-
-%% ==========================================================================
-%  PART 7.  FED -> FASTING ORGAN EXCHANGE FLUXES  (L2 min-norm QP)
+%  PART 5.  FED -> FASTING ORGAN EXCHANGE FLUXES  (L2 min-norm QP)
 %  Data-led survey of the inter-organ fuel economy: every organ<->blood exchange
 %  reaction (<Organ>_EX_<met>(e)_[bc], and brain _[csf]) with its fed and fasting
 %  L2 flux and the change. Exchange-flux SIGN is meaningful (uptake vs release), so
@@ -475,13 +195,13 @@ if exist('fluxFedM', 'var') && exist('fluxFastM', 'var') && ~isempty(fluxFedM) &
     try
         vdb = loadVMHDatabase;  vmhAbbr = vdb.metabolites(:,1);  vmhName = vdb.metabolites(:,2);
     catch
-        warning('Part 7: loadVMHDatabase failed — using metabolite abbreviations.');
+        warning('Part 5: loadVMHDatabase failed — using metabolite abbreviations.');
     end
     fluxSex = {'male', maleFast, fluxFedM, fluxFastM; 'female', femaleFast, fluxFedF, fluxFastF};
     for q = 1:2
         m = fluxSex{q,2};  vFed = fluxSex{q,3};  vFast = fluxSex{q,4};
         if isempty(vFed) || isempty(vFast)
-            fprintf('\n7 — %s: L2 flux missing (fed or fasting did not solve) — skipped.\n', fluxSex{q,1});
+            fprintf('\n5 — %s: L2 flux missing (fed or fasting did not solve) — skipped.\n', fluxSex{q,1});
             continue
         end
         % Organ<->blood exchange reactions: <Organ>_EX_<met>(e)_[bc] (brain _[csf]).
@@ -535,5 +255,5 @@ if exist('fluxFedM', 'var') && exist('fluxFastM', 'var') && ~isempty(fluxFedM) &
         end
     end
 else
-    warning('Part 7: L2 flux vectors not available — run Parts 4.2 and 4.3b (needs L2 to have solved).');
+    warning('Part 5: L2 flux vectors not available — run Part 4 first.');
 end

@@ -21,7 +21,6 @@ function [lims, T] = healthyPhysiologyRanges(sourceFile, ipar)
 % Anna Sheehy 2026.
 
 z = 1.959964;
-bsaDuBois = @(W, H) 0.007184 * W^0.425 * H^0.725;   % m2; W kg, H cm
 S = readtable(sourceFile, 'TextType', 'char', 'Delimiter', ',');
 [g, field, sex] = findgroups(S.field, S.sex);
 lims = struct('male', struct(), 'female', struct());

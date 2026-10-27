@@ -1,5 +1,5 @@
 %% metabolomicsPersonalisation.m
-% Thesis Ch5, Results 2.2: what does personalising a WBM with serum metabolomics do?
+% Thesis Ch5, Results 2.2: what does personalising a WBM with blood metabolomics do?
 %
 % Engine: physiologicalConstraintsHMDBbased(..., 'direct', ..., 'bc') (PSCM toolbox,
 % Thiele), exactly as called by persWBMmetabolomics (Persephone, Nap et al.), unchanged.
@@ -16,8 +16,8 @@
 %
 % PARTS (checkpointed in results/metabolomics; set redo.<name> = true to rerun one)
 %   0 setup            1 models + panel        2 synthetic cohort
-%   3 bound map        4 verification          5 feasibility x window
-%   6 read-out FVA     7 BMR (L2)              8 figures + tables
+%   3 bound map        4 verification          5 feasibility x allowance, crossed bounds
+%   6 figures + tables
 %
 % Anna Sheehy 2026.
 
@@ -26,27 +26,10 @@
 %  ==========================================================================
 nPerSex     = 25;              % synthetic individuals per sex
 rngSeed     = 1;
-windows     = [0.1 0.2 0.5];   % +/- measurement window (0.1 infant WBMs, 0.2 Persephone)
-refWindow   = 0.2;             % Persephone default; used for read-outs and BMR
-maxFVA      = nPerSex;         % individuals per sex given read-out FVA
-maxBMR      = nPerSex;         % individuals per sex given L2 BMR
-if ~exist('stopAfter', 'var'), stopAfter = 8; end   % last part to run (settable before calling)
-if ~exist('skip', 'var'), skip = []; end            % parts to skip, e.g. skip = [6 7] to draw figures early
-redo = struct('cohort',false,'map',false,'verify',false,'feas',false, ...
-              'fva',false,'bmr',false);
-
-% Read-outs: organ exchanges benchmarked in the fasting chapter (fastingLiteratureTargets.m)
-readout = {'Liver_EX_glc_D(e)_[bc]',     'Liver glucose'
-           'Brain_EX_glc_D(e)_[csf]',    'Brain glucose'
-           'Muscle_EX_glc_D(e)_[bc]',    'Muscle glucose'
-           'RBC_EX_glc_D(e)_[bc]',       'RBC glucose'
-           'Kidney_EX_glc_D(e)_[bc]',    'Kidney glucose'
-           'Adipocytes_EX_glyc(e)_[bc]', 'Adipose glycerol'
-           'Liver_EX_bhb(e)_[bc]',       'Liver 3-hydroxybutyrate'
-           'Brain_EX_bhb(e)_[csf]',      'Brain 3-hydroxybutyrate'
-           'Muscle_EX_ala_L(e)_[bc]',    'Muscle alanine'
-           'Liver_EX_ala_L(e)_[bc]',     'Liver alanine'
-           'EX_urea[u]',                 'Urinary urea'};
+windows     = [0.1 0.2 0.5];   % +/- measured concentration allowance (0.1 infant WBMs, 0.2 Persephone)
+refWindow   = 0.2;             % Persephone default; used for the uptake-limit ratios (Fig B)
+if ~exist('stopAfter', 'var'), stopAfter = 6; end   % last part to run (settable before calling)
+redo = struct('cohort',false,'map',false,'verify',false,'feas',false);
 
 P = persWBMpaths();
 fastPath  = fullfile(P.results, 'fasting');
@@ -319,62 +302,8 @@ end
 if stopAfter < 6, return, end
 
 %% ==========================================================================
-%  PART 6. READ-OUT FVA (refWindow, models feasible with floors)
+%  PART 6. FIGURES + TABLES
 %  ==========================================================================
-if ismember(6, skip)
-    fprintf('Part 6 - skipped\n');
-elseif ~exist(ck('fva'), 'file') || redo.fva
-    nR = size(readout, 1);
-    fva = struct();
-    for s = sexes
-        F = fastingTargetFVA(ctrl.(s{1}), readout(:, 1));
-        fva.(s{1}).ctrlMin = F.fvaMin';  fva.(s{1}).ctrlMax = F.fvaMax';
-        fva.(s{1}).min = nan(nPerSex, nR);  fva.(s{1}).max = nan(nPerSex, nR);
-        ok = feas.individual(feas.sex == s{1} & feas.window == refWindow & feas.feasibleFloors);
-        for i = ok(1:min(end, maxFVA))'
-            m = applyMetabBounds(ctrl.(s{1}), map.(s{1}), metIDs, conc.(s{1})(i, :), refWindow);
-            F = fastingTargetFVA(m, readout(:, 1));
-            fva.(s{1}).min(i, :) = F.fvaMin';  fva.(s{1}).max(i, :) = F.fvaMax';
-            save(ck('fva'), 'fva');                       % incremental
-            fprintf('Part 6 - FVA %s %02d done\n', s{1}, i);
-        end
-    end
-    save(ck('fva'), 'fva');
-else
-    load(ck('fva'), 'fva');
-end
-if stopAfter < 7, return, end
-
-%% ==========================================================================
-%  PART 7. BMR (L2) at refWindow
-%  ==========================================================================
-if ismember(7, skip)
-    fprintf('Part 7 - skipped\n');
-elseif ~exist(ck('bmr'), 'file') || redo.bmr
-    bmr = struct();
-    for s = sexes
-        b = calculateModelBMR(ctrl.(s{1}), 'norms', {'L2'});
-        bmr.(s{1}).ctrl = b.L2.kcal;
-        bmr.(s{1}).kcal = nan(nPerSex, 1);
-        ok = feas.individual(feas.sex == s{1} & feas.window == refWindow & feas.feasibleFloors);
-        for i = ok(1:min(end, maxBMR))'
-            m = applyMetabBounds(ctrl.(s{1}), map.(s{1}), metIDs, conc.(s{1})(i, :), refWindow);
-            b = calculateModelBMR(m, 'norms', {'L2'});
-            bmr.(s{1}).kcal(i) = b.L2.kcal;
-            save(ck('bmr'), 'bmr');
-            fprintf('Part 7 - BMR %s %02d: %.0f kcal (control %.0f)\n', s{1}, i, b.L2.kcal, bmr.(s{1}).ctrl);
-        end
-    end
-    save(ck('bmr'), 'bmr');
-else
-    load(ck('bmr'), 'bmr');
-end
-if stopAfter < 8, return, end
-
-%% ==========================================================================
-%  PART 8. FIGURES + TABLES
-%  ==========================================================================
-col = struct('male', [0.13 0.40 0.67], 'female', [0.80 0.25 0.33]);
 typeOrder = {'organ uptake', 'kidney filtration', 'blood-brain barrier'};
 sumFile = fopen(fullfile(resPath, 'summary.txt'), 'w');
 say = @(varargin) cellfun(@(f) fprintf(f, varargin{:}), {1, sumFile}, 'UniformOutput', false);
@@ -474,162 +403,19 @@ if ~isempty(culprit)
         strjoin(compose('%s x%d', u, accumarray(j, 1)), ', '));
 end
 
-% --- Fig D: read-out FVA range relative to control ----------------------------------
-if exist('fva', 'var')
-nR = size(readout, 1);
-figure('Position', [100 100 900 500]);
-W = [];  G = [];  Sx = [];
-for k = 1:2
-    s = sexes{k};
-    wCtrl = fva.(s).ctrlMax - fva.(s).ctrlMin;
-    wInd  = (fva.(s).max - fva.(s).min) ./ wCtrl;
-    keep = all(~isnan(wInd), 2);
-    W = [W; reshape(wInd(keep, :), [], 1)]; %#ok<AGROW>
-    G = [G; reshape(repmat(1:nR, sum(keep), 1), [], 1)]; %#ok<AGROW>
-    Sx = [Sx; repmat(k, sum(keep) * nR, 1)]; %#ok<AGROW>
-    say('D %s: %d models; median range relative to control per read-out: %s\n', s, sum(keep), ...
-        strjoin(compose('%s %.2f', string(readout(:, 2)), median(wInd(keep, :), 1)'), '; '));
-end
-boxchart(G, W, 'GroupByColor', categorical(Sx, [1 2], {'Male','Female'}));
-set(gca, 'XTick', 1:nR, 'XTickLabel', readout(:, 2), 'XTickLabelRotation', 40);
-yline(1, 'k--'); ylabel('Feasible flux range / control range');
-legend('Location', 'northoutside', 'Orientation', 'horizontal');
-title(sprintf('Read-out flux ranges after personalisation (window \\pm%d%%)', round(100*refWindow)));
-saveFig(gcf, figPath, '', 'metabD_fvaRange');                      % not in the chapter
-
-% --- Fig E: which input metabolite drives which read-out (Spearman, BH-FDR) ---------
-% read-out value = the bound in the physiological direction of the benchmark:
-% maximal release (FVA max) for release reactions, maximal uptake (FVA min) otherwise
-isRelease = ismember(readout(:, 1), {'Liver_EX_glc_D(e)_[bc]','Kidney_EX_glc_D(e)_[bc]', ...
-    'Adipocytes_EX_glyc(e)_[bc]','Liver_EX_bhb(e)_[bc]','Muscle_EX_ala_L(e)_[bc]','EX_urea[u]'})';
-figure('Position', [100 100 1100 650]);
-tl = tiledlayout(1, 2, 'TileSpacing', 'compact');
-corrOut = [];
-for k = 1:2
-    s = sexes{k};
-    Y = fva.(s).min;  Y(:, isRelease) = fva.(s).max(:, isRelease);
-    keep = all(~isnan(Y), 2);
-    X = conc.(s)(keep, :);  Y = Y(keep, :);
-    [rho, p] = spearman(X, Y);
-    rho(:, std(Y, 0, 1) < 1e-9) = NaN;  p(:, std(Y, 0, 1) < 1e-9) = NaN;   % constant read-out
-    q = bhFDR(p);
-    nexttile;
-    imagesc(rho, 'AlphaData', ~isnan(rho)); caxis([-1 1]); colormap(divergingMap());
-    set(gca, 'YTick', 1:nMet, 'YTickLabel', panel.name, 'XTick', 1:nR, 'XTickLabel', readout(:, 2), ...
-        'XTickLabelRotation', 45, 'FontSize', 8);
-    [ri, ci] = find(q < 0.05);
-    hold on; text(ci, ri, '*', 'HorizontalAlignment', 'center', 'FontSize', 12); hold off;
-    title(sprintf('%s (n = %d)', s, sum(keep)));
-    [ri, ci] = find(~isnan(q));
-    Tk = table(repmat(string(s), numel(ri), 1), string(metIDs(ri))', ...
-        string(readout(ci, 2)), rho(sub2ind(size(rho), ri, ci)), p(sub2ind(size(p), ri, ci)), ...
-        q(sub2ind(size(q), ri, ci)), 'VariableNames', {'sex','met','readout','rho','p','q'});
-    if isempty(corrOut), corrOut = Tk; else, corrOut = [corrOut; Tk]; end %#ok<AGROW>
-end
-cb = colorbar; cb.Layout.Tile = 'east'; cb.Label.String = 'Spearman \rho';
-title(tl, 'Input metabolite concentration vs read-out flux capacity (* FDR < 0.05)');
-saveFig(gcf, figPath, '', 'metabE_drivers');                       % not in the chapter
-writetable(sortrows(corrOut, 'q'), fullfile(resPath, 'drivers_spearman.csv'));
-sig = corrOut(corrOut.q < 0.05, :);
-say('E %d metabolite x read-out associations at FDR < 0.05\n', height(sig));
-for r = 1:min(height(sig), 25)
-    say('   %s %-8s %-24s rho %+.2f q %.2g\n', sig.sex(r), sig.met(r), sig.readout(r), sig.rho(r), sig.q(r));
-end
-
-end   % Fig D/E need Part 6
-
-% --- Fig F: BMR ---------------------------------------------------------------------
-if exist('bmr', 'var')
-figure('Position', [100 100 500 420]);
-hold on
-for k = 1:2
-    s = sexes{k};  y = bmr.(s).kcal(~isnan(bmr.(s).kcal));
-    swarmX = k + 0.25 * (rand(size(y)) - 0.5);
-    scatter(swarmX, y, 25, col.(s), 'filled', 'MarkerFaceAlpha', 0.6);
-    plot(k + [-0.3 0.3], bmr.(s).ctrl * [1 1], 'k-', 'LineWidth', 2);
-    say('F %s: control L2 BMR %.0f kcal; personalised median %.0f (range %.0f-%.0f, n = %d)\n', ...
-        s, bmr.(s).ctrl, median(y), min(y), max(y), numel(y));
-end
-hold off
-set(gca, 'XTick', 1:2, 'XTickLabel', {'Male','Female'}, 'XLim', [0.4 2.6]);
-ylabel('BMR (kcal/day, L2)'); title('BMR of metabolomics-personalised WBMs (bar = control)');
-saveFig(gcf, figPath, '', 'metabF_bmr');                           % not in the chapter
-end   % Fig F needs Part 7
-
 fclose(sumFile);
-fprintf('Part 8 - figures in %s and %s\n', figPath, thesisFig);
+fprintf('Part 6 - figures in %s and %s\n', figPath, thesisFig);
 
 
 %% ==========================================================================
 %  LOCAL FUNCTIONS
 %  ==========================================================================
-function s = fmtNum(x)
-% Number for a LaTeX table: 0 decimals from 100, 1 from 10, else 2.
-if ~isfinite(x), s = '--';
-elseif abs(x) >= 100, s = sprintf('%.0f', x);
-elseif abs(x) >= 10,  s = sprintf('%.1f', x);
-else,                 s = sprintf('%.2f', x);
-end
-end
-
 function ok = isFeasibleWBM(m, withFloors)
 % Unit whole-body maintenance flux achievable (Persephone criterion), optionally with
 % the resting brain/heart ATP floors of calculateModelBMR.
-if withFloors
-    m.lb(contains(m.rxns, 'Brain_DM_atp')) = 3500;
-    m.lb(contains(m.rxns, 'Heart_DM_atp')) = 1000;
-end
+if withFloors, m = setBMRConditions(m); end
 ob = strcmp(m.rxns, 'Whole_body_objective_rxn');
 m.c(:) = 0;  m.c(ob) = 1;  m.osenseStr = 'max';
 sol = optimizeWBModel(m);
 ok = sol.stat == 1 && sol.f >= 1 - 1e-6;
-end
-
-function [rho, p] = spearman(X, Y)
-% Spearman correlation of every column of X with every column of Y (average ranks for
-% ties); two-sided p from the t approximation, via betainc (no toolbox needed).
-n = size(X, 1);
-rX = rankCols(X);  rY = rankCols(Y);
-rho = corr_(rX, rY);
-t2 = rho.^2 .* (n - 2) ./ max(1 - rho.^2, eps);
-p = betainc((n - 2) ./ (n - 2 + t2), (n - 2) / 2, 0.5);
-end
-
-function R = rankCols(X)
-R = zeros(size(X));
-for j = 1:size(X, 2)
-    [s, ix] = sort(X(:, j));
-    r = zeros(size(s));  i = 1;
-    while i <= numel(s)
-        k = i;
-        while k < numel(s) && s(k + 1) == s(i), k = k + 1; end
-        r(i:k) = (i + k) / 2;  i = k + 1;
-    end
-    R(ix, j) = r;
-end
-end
-
-function C = corr_(A, B)
-A = (A - mean(A, 1)) ./ std(A, 0, 1);  B = (B - mean(B, 1)) ./ std(B, 0, 1);
-C = (A' * B) / (size(A, 1) - 1);
-end
-
-function q = bhFDR(p)
-% Benjamini-Hochberg over all non-NaN entries.
-q = nan(size(p));  v = find(~isnan(p));
-[ps, o] = sort(p(v));  m = numel(ps);
-qs = min(1, cummin(ps .* m ./ (1:m)', 'reverse'));
-q(v(o)) = qs;
-end
-
-function cm = divergingMap()
-n = 128;
-blue = [0.13 0.40 0.67];  red = [0.80 0.25 0.33];
-cm = [blue + (1 - blue) .* linspace(0, 1, n)'; flipud(red + (1 - red) .* linspace(0, 1, n)')];
-end
-
-function saveFig(h, figPath, thesisFig, name)
-exportgraphics(h, fullfile(figPath, [name '.png']), 'Resolution', 300);
-exportgraphics(h, fullfile(figPath, [name '.pdf']), 'ContentType', 'vector');
-if exist(thesisFig, 'dir'), copyfile(fullfile(figPath, [name '.png']), thesisFig); end
 end

@@ -2,8 +2,8 @@ function oatEffectsFigure(long, rank, figPath, thesisFig, exclude)
 % Figure of metabolomicsOAT.m (metabG_oatHeatmap): effect of each personalisation input on
 % the feasible range of the 11 read-outs, Harvey (left) and Harvetta (right). Inputs with an
 % effect of at least 0.01 on any read-out get their own row; the other metabolites share one
-% row showing their largest effect. Inputs with an infeasible level and the height-only
-% check are shown last. Cells give the effect (shift in feasible range / control range),
+% row showing their largest effect. Inputs with an infeasible level are shown last; the
+% height-only check is not shown. Cells give the effect (shift in feasible range / control range),
 % labelled to one decimal where it is at least 0.05.
 %
 % INPUT: long     oatEffects_long.csv (sex, input, kind, readout, effect, ...)

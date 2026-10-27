@@ -49,8 +49,8 @@ for k = 1:2
             sol = optimizeWBModel(m);
             r = struct('uc', uc, 'feasStat', sol.stat, 'kcal', NaN, 'ureaQP', NaN, 'ureaFVA', [NaN NaN]);
             if sol.stat == 1
-                b = calculateModelBMR(m, 'norms', {'L2'});
-                r.kcal = b.L2.kcal;  r.ureaQP = b.L2.v(strcmp(m.rxns, urea));
+                b = calculateModelBMR(m);
+                r.kcal = b.kcal;  r.ureaQP = b.v(strcmp(m.rxns, urea));
                 F = fastingTargetFVA(m, {urea});  r.ureaFVA = [F.fvaMin F.fvaMax];
             end
             save(f, 'r');

@@ -14,7 +14,7 @@ This is the code for Chapter 5 of the PhD thesis of Anna Sheehy (University of G
 - [COBRA Toolbox](https://github.com/opencobra/cobratoolbox) (commit 91c8cbf27 was used), which provides Harvey and Harvetta 1.03d (`loadPSCMfile`) and the PSCM toolbox functions
 - Gurobi (13.0.0 was used) for LP and QP
 
-The COBRA Toolbox functions `persWBM`, `persWBMmetabolomics`, `physiologicalConstraintsHMDBbased` and `calcOrganFract` are called unchanged.
+The COBRA Toolbox functions `persWBM`, `persWBMmetabolomics`, `physiologicalConstraintsHMDBbased` and `calcOrganFract` are called unchanged. Two unit errors found in this work are fixed in the COBRA Toolbox (branch `ch5-bugfixes`, to be merged into `develop`): `individualizedLabReport` cardiac output options 3 to 5 returned L/day where mL/min is used, and `persWBMmetabolomics` read urine concentrations in µmol/L as µmol per mmol creatinine. `heightCardiacOutput.m` uses the corrected option 4; the chapter uses blood metabolites only.
 
 ## Setup
 
@@ -35,8 +35,8 @@ The project folder holds the inputs and receives the outputs:
 
 | Folder | Contents |
 |---|---|
-| `common/` | BMR from the basal flux distribution (`calculateModelBMR`), flux ranges under BMR conditions (`fastingTargetFVA`), dependent physiological parameters (`recalcDependentParams`), paths (`persWBMpaths`) |
-| `fasting/` | control (fed) and fasted models, comparison with fluxes measured in fasting humans |
+| `common/` | shared functions: BMR conditions (`setBMRConditions`), BMR from a flux distribution (`bmrFromFlux`, `calculateModelBMR`), flux ranges under BMR conditions (`fastingTargetFVA`), fed models rebuilt with other parameters (`buildFedWBM`, `onLiftedModel`), dependent physiological parameters (`recalcDependentParams`), body surface area (`bsaDuBois`), net organ exchanges (`netExchange`), the 11 read-outs (`oatReadouts`), paths (`persWBMpaths`) |
+| `fasting/` | control (fed) and fasted models, the tests that set the fasted state, comparison with fluxes measured in fasting humans, urine creatinine |
 | `metabolomics/` | personalisation with synthetic blood metabolite profiles: bounds changed, feasibility, crossed bounds |
 | `inputEffects/` | effect of each physiological parameter and metabolite on its own; height through cardiac output and blood volume |
 | `active/` | one hour of running |
@@ -47,17 +47,15 @@ All scripts start from the models built by `fastingWBM.m`.
 
 | Step | Script | Output in the chapter |
 |---|---|---|
-| 1 | `fasting/fastingWBM.m` | control and fasted models, fasted BMR |
-| 2 | `fasting/fastingFigures.m` | flux ranges of the fasting comparison (used by step 3) |
-| 3 | `fasting/fastingTables.m` | tables of fasted BMR and gas exchange, and of the comparison with fasting humans |
-| 4 | `metabolomics/metabolomicsPersonalisation.m` | metabolite panel table; figures of bounds per metabolite, uptake limits and feasibility |
-| 5 | `inputEffects/metabolomicsOAT.m` | table of ranges tested; figure of effects on organ exchanges. Run again with `oatMode = 'l2'` for the figure of effects on the basal flux distribution and BMR |
-| 6 | `inputEffects/oatBMRdecomposition.m` | BMR change with heart rate and haematocrit, by reaction and organ |
-| 7 | `inputEffects/heightCardiacOutput.m` | models with cardiac output from height and personalised blood volume |
-| 8 | `active/activeWBM.m` | table of extra muscle work and the run |
-| 9 | `fasting/fastingUrineCreatinine.m` | fasted models with urine creatinine at the low and high end of its range: feasibility, BMR and urinary urea excretion |
-
-`fasting/fastingWBM_investigations.m` and `fasting/femaleBrainATP_investigation.m` contain the tests of amino acid release and phosphate uptake that set the fasted state.
+| 1 | `fasting/fastingWBM.m` | control and fasted models, fed and fasted BMR |
+| 2 | `fasting/fastingSetupTests.m` | brain and heart ATP supply of the fasted models for each amino-acid release limit and with phosphate uptake capped |
+| 3 | `fasting/fastingTables.m` | tables of fasted BMR and gas exchange, and of the comparison with fasting humans (computes the FVA of the benchmarks on its first run) |
+| 4 | `fasting/fastingUrineCreatinine.m` | fasted models with urine creatinine at the low and high end of its range: feasibility, BMR and urinary urea excretion |
+| 5 | `metabolomics/metabolomicsPersonalisation.m` | metabolite panel table; figures of bounds per metabolite, uptake limits and feasibility |
+| 6 | `inputEffects/metabolomicsOAT.m` | table of ranges tested; figure of effects on organ exchanges. Run again with `oatMode = 'l2'` for the figure of effects on the basal flux distribution and BMR |
+| 7 | `inputEffects/oatBMRdecomposition.m` | BMR change with heart rate and haematocrit, by reaction and organ |
+| 8 | `inputEffects/heightCardiacOutput.m` | models with cardiac output from height and personalised blood volume |
+| 9 | `active/activeWBM.m` | table of extra muscle work and the run |
 
 `metabolomicsOAT.m` and `heightCardiacOutput.m` save one file per case and skip finished cases, so they can be run in several MATLAB sessions at once (see the header of each script).
 

@@ -3,11 +3,11 @@
 %
 % Control: the fed Harvey/Harvetta of fastingWBM.m (diet is the only energy source; in the
 % feeding state storage sinks can fill but not release).
-%   1. Activity capacity: maximal extra muscle ATP hydrolysis (Muscle_DM_atp) under BMR
-%      conditions (whole-body maintenance = 1, brain/heart ATP floors), in kcal/day, with
-%      the reference O2 uptake bound and with it doubled (does O2 or diet energy limit?).
-%      Compared with the ~500 kcal/day left for activity in Thiele et al. 2020.
-%   2. One running bout: extra muscle ATP = (METs - 1) x body weight x hours (1 MET =
+%   Activity capacity: maximal extra muscle ATP hydrolysis (Muscle_DM_atp) under BMR
+%      conditions (whole-body maintenance = 1, brain/heart ATP floors), in kcal/day, for
+%      each scenario below; for 'diet' it is compared with the ~500 kcal/day left for
+%      activity in Thiele et al. 2020.
+%   One running bout: extra muscle ATP = (METs - 1) x body weight x hours (1 MET =
 %      1 kcal/kg/h), imposed as a floor on Muscle_DM_atp; L2 (min-norm) flux as in
 %      calculateModelBMR. Scenario 'diet' as the control; scenario 'stores' additionally
 %      lets liver/muscle glycogen and adipose triacylglycerol be released; 'o2' raises the
@@ -64,20 +64,8 @@ for k = 1:2
     missing = setdiff([fuel(:, 1); storeRxns(:)], m0.rxns);
     if ~isempty(missing), warning('activeWBM:missing', 'Not in %s model: %s', s, strjoin(missing, ', ')); end
 
-    % 1. capacity under BMR conditions (as calculateModelBMR / fastingTargetFVA)
-    cap = nan(1, 2);
-    for o2scale = [1 2]
-        m = m0;  m.lb(o2) = o2scale * m0.lb(o2);
-        cap(o2scale) = maxMuscleATP(m, mDM);
-    end
-    res.(s).capacityATP  = cap;                       % mmol/day [reference O2, O2 x2]
-    res.(s).capacityKcal = cap / 1000 * kcalPerMol;
+    % running bout; each scenario's capacity is the largest extra muscle ATP (maxMuscleATP)
     BW = ipar.(s).bodyWeight;
-    res.(s).capacityRunMin = res.(s).capacityKcal / ((runMETs - 1) * BW) * 60;
-    fprintf('%s: activity capacity %.0f kcal/day (O2 x2: %.0f) = %.0f min running at %.1f METs\n', s, ...
-        res.(s).capacityKcal(1), res.(s).capacityKcal(2), res.(s).capacityRunMin(1), runMETs);
-
-    % 2. running bout
     boutKcal = (runMETs - 1) * BW * runMinutes / 60;
     boutATP  = boutKcal / kcalPerMol * 1000;
     res.(s).boutKcal = boutKcal;  res.(s).boutATP = boutATP;
@@ -85,8 +73,8 @@ for k = 1:2
     extraO2 = (runMETs - 1) * 3.5 * BW * runMinutes / 22.4;
     res.(s).extraO2 = extraO2;
     if ~(isfield(res.(s), 'rest') && ~isempty(res.(s).rest.fluxes))
-        rest = calculateModelBMR(m0, 'norms', {'L2'});
-        res.(s).rest = struct('kcal', rest.L2.kcal, 'fluxes', pickFluxes(rest.L2.v, m0, fuel));
+        rest = calculateModelBMR(m0);
+        res.(s).rest = struct('kcal', rest.kcal, 'fluxes', pickFluxes(rest.v, m0, fuel));
     end
     for scen = {'diet', 'stores', 'o2', 'o2stores', 'o2muscle', 'o2musclestores'}
         m = m0;
@@ -110,11 +98,11 @@ for k = 1:2
             continue
         end
         m.lb(mDM) = boutATP;
-        a = calculateModelBMR(m, 'norms', {'L2'});
-        r = struct('stat', a.L2.stat, 'kcal', a.L2.kcal, 'fluxes', pickFluxes(a.L2.v, m, fuel), ...
+        a = calculateModelBMR(m);
+        r = struct('stat', a.stat, 'kcal', a.kcal, 'fluxes', pickFluxes(a.v, m, fuel), ...
                    'capacityKcal', capKcal);
-        if contains(scen{1}, 'stores') && ~isempty(a.L2.v)
-            r.storeRelease = a.L2.v(ismember(m.rxns, storeRxns))';
+        if contains(scen{1}, 'stores') && ~isempty(a.v)
+            r.storeRelease = a.v(ismember(m.rxns, storeRxns))';
         end
         res.(s).(scen{1}) = r;
         fprintf('%s bout (%s): stat %d, model EE %.0f kcal vs rest %.0f + bout %.0f = %.0f\n', s, scen{1}, ...
@@ -149,9 +137,7 @@ activeStateTable(res, runMETs, fullfile(P.tables, 'activeState.tex'));
 
 function f = maxMuscleATP(m, mDM)
 % maximal extra muscle ATP hydrolysis (mmol/day) under BMR conditions; NaN if not solved
-m.lb(contains(m.rxns, 'Brain_DM_atp')) = 3500;
-m.lb(contains(m.rxns, 'Heart_DM_atp')) = 1000;
-ob = strcmp(m.rxns, 'Whole_body_objective_rxn');  m.lb(ob) = 1;  m.ub(ob) = 1;
+m = setBMRConditions(m);
 m.c(:) = 0;  m.c(mDM) = 1;  m.osenseStr = 'max';
 sol = optimizeWBModel(m);
 f = NaN;  if sol.stat == 1, f = sol.f; end

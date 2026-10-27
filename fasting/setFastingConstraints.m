@@ -38,16 +38,15 @@ function model = setFastingConstraints(model, sex, varargin)
 %                            tissue) during fasting; NOT dietary. REQUIRED to meet the
 %                            resting brain ATP floor: the model has no bone organ, so
 %                            capping Pi at dietary ~14 mmol/day starves the brain
-%                            (max Brain_DM_atp ~2600 < 3500). [TODO: justify the rate]
+%                            (max Brain_DM_atp 2464 < 3500; fastingSetupTests.m).
 %
 % OUTPUT
 %   model    with fasting constraints applied; model.SetupInfo.FeedingStatus='fasting'
 %            and model.SetupInfo.FastingParams recording the values used.
 %
-% NOTE: the release magnitudes are PROVISIONAL placeholders chosen for feasibility
-% (aaRelease -40 is the minimum at which the female brain meets the 3500 resting-ATP
-% floor: female brain max -20 -> 1514, -30 -> 3320, -40 -> 4587). They still need
-% literature justification (cf Felig 1970; see femaleBrainATP_investigation.m).
+% NOTE: aaRelease -40 is the smallest release limit at which the female brain meets the
+% 3500 resting-ATP demand (fastingSetupTests.m); it is chosen for feasibility, not from a
+% measured release rate (cf Felig 1970).
 %
 % Anna Sheehy 2026.  Companion to setFeedingFastingConstraints (Ines Thiele).
 
@@ -88,7 +87,7 @@ end
 %     during fasting, but Harvey/Harvetta have NO bone organ (Thiele 2020), so Pi
 %     must enter through Diet_EX_pi[d]. This is NOT dietary phosphate — it stands in
 %     for bone/tissue Pi release, and is REQUIRED to meet the resting brain ATP floor
-%     (capping Pi at dietary ~14 mmol/day starves it: max Brain_DM_atp ~2600 < 3500).
+%     (capping Pi at dietary ~14 mmol/day starves it: max Brain_DM_atp 2464 < 3500).
 model = setRequired(model, 'Diet_EX_pi[d]', opt.phosphate, []);
 
 % 3. hepatic glycogen release, no synthesis (lb<0, ub=0)

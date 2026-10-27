@@ -1,11 +1,12 @@
 %% fastingTables.m
-% Thesis Ch5, fasted state: two LaTeX tables from the existing caches of fastingWBM.m /
-% fastingFigures.m (no new solves).
+% Thesis Ch5, fasted state: two LaTeX tables from the models and L2 fluxes of fastingWBM.m.
 %   Tables/fastingWholeBody.tex   fed vs fasted BMR (L2), O2 uptake, CO2 output, RQ
 %   Tables/fastingBenchmarks.tex  per benchmark and sex: literature range, basal (L2) flux,
 %                                 feasible range (FVA) and whether each lies in the range
-% Values in the benchmark table are oriented so that a positive number is
-% the direction described in the literature (e.g. uptake shown as a positive uptake).
+% Values in the benchmark table are oriented so that a positive number is the direction
+% described in the literature (e.g. uptake shown as a positive uptake). Bounds, fluxes and
+% the FVA of the benchmark reactions are cached (ckpt_figData.mat, ckpt_fvaTargets.mat), so
+% only the first run solves anything (FVA, ~1 min per target).
 %
 % Anna Sheehy 2026.
 
@@ -15,21 +16,33 @@ tabPath   = P.tables;
 if ~exist(tabPath, 'dir'), mkdir(tabPath); end
 sexes = {'male', 'female'};  sexLab = {'Harvey', 'Harvetta'};
 
-load(fullfile(resPath, 'ckpt_figData.mat'), 'D');
-load(fullfile(resPath, 'ckpt_fvaTargets.mat'), 'fvaM', 'fvaF');
+figData = fullfile(resPath, 'ckpt_figData.mat');
+fvaData = fullfile(resPath, 'ckpt_fvaTargets.mat');
+if exist(figData, 'file'), load(figData, 'D'); else, D = benchmarkFluxData(resPath); save(figData, 'D'); end
+% FVA of every benchmark reaction (or signed sum) under BMR conditions; only missing ones are solved
+Tt = fastingLiteratureTargets([], 'male');
+rl = unique(cellstr(Tt.rxn(strlength(Tt.rxn) > 0)), 'stable');
+fvaM = [];  fvaF = [];
+if exist(fvaData, 'file'), load(fvaData, 'fvaM', 'fvaF'); end
+todo = rl;  if ~isempty(fvaM), todo = rl(~ismember(rl, cellstr(fvaM.rxn))); end
+if ~isempty(todo)
+    changeCobraSolver('gurobi', 'LP', 0);
+    mdl = load(fullfile(resPath, 'ckpt_feasibleModels.mat'), 'maleFast', 'femaleFast');
+    fvaM = [fvaM; fastingTargetFVA(mdl.maleFast, todo)];
+    fvaF = [fvaF; fastingTargetFVA(mdl.femaleFast, todo)];
+    save(fvaData, 'fvaM', 'fvaF');
+end
 FVA = struct('male', fvaM, 'female', fvaF);
 Mdl = load(fullfile(resPath, 'ckpt_feasibleModels.mat'), 'maleFed', 'femaleFed', 'maleFast', 'femaleFast');
 L2  = load(fullfile(resPath, 'ckpt_fluxL2.mat'), 'fluxFedM', 'fluxFedF', 'fluxFastM', 'fluxFastF');
 
 %% Table 1: whole-body measures ---------------------------------------------------------
-bmrOf = @(m, v) full(sum(([max(-m.S, 0), max(m.S, 0)] * [max(v, 0); max(-v, 0)]) .* contains(m.mets, '_atp['))) ...
-    / 1000 * 64 * 0.239006;
 W = struct();
 pairs = {'male', 'maleFed', 'maleFast', 'fluxFedM', 'fluxFastM'; 'female', 'femaleFed', 'femaleFast', 'fluxFedF', 'fluxFastF'};
 for k = 1:2
     s = pairs{k, 1};  d = D.(s);
     vFed = full(L2.(pairs{k, 4}));  vFast = full(L2.(pairs{k, 5}));
-    W.(s).bmr = [bmrOf(Mdl.(pairs{k, 2}), vFed(1:numel(d.rxns))), bmrOf(Mdl.(pairs{k, 3}), vFast(1:numel(d.rxns)))];
+    W.(s).bmr = [bmrFromFlux(Mdl.(pairs{k, 2}), vFed), bmrFromFlux(Mdl.(pairs{k, 3}), vFast)];
     W.(s).o2  = -[d.vFed(d.iO2), d.vFast(d.iO2)];
     W.(s).co2 = [d.vFed(d.iCO2), d.vFast(d.iCO2)];
     W.(s).rq  = W.(s).co2 ./ W.(s).o2;
@@ -55,7 +68,6 @@ fprintf(tf, '\\label{tab:fastWholeBody}\n\\end{table}\n');
 fclose(tf);
 
 %% Table 2: benchmarks ------------------------------------------------------------------
-Tt = fastingLiteratureTargets([], 'male');
 rows = find(Tt.fluxComparable & ~isnan(Tt.litLow) & strlength(Tt.rxn) > 0);
 B = struct();
 for k = 1:2
@@ -97,7 +109,7 @@ end
 fprintf(tf, '\\bottomrule\n\\end{tabular}\n');
 src = unique({B(~[B.noSource]).source}, 'stable');
 fprintf(tf, ['\\caption[Fasted models compared with fluxes measured in humans]{\\textbf{Organ exchange fluxes of the fasted models compared with the same fluxes measured in humans after an overnight to 24~h fast.} ' ...
-    'Measured: range reported in humans \\cite{%s}. All values are in the direction named, so an uptake is a positive uptake and a negative value means the opposite direction. ' ...
+    'Measured: range reported in humans \\cite{%s}. For red blood cell glucose uptake and muscle and hepatic alanine exchange, the range is a single reported rate $\\pm 20\\%%$; for brain glucose uptake, the lower end is set 20\\%% below the reported rate. All values are in the direction named, so an uptake is a positive uptake and a negative value means the opposite direction. ' ...
     'Endogenous glucose production (liver and kidney), renal glucose release and hepatic alanine uptake are net exchanges over all blood compartments. ' ...
     'QP-FBA: flux in the basal flux distribution. FVA range: smallest and largest possible flux. ' ...
     'Within measured range: $\\checkmark$ within it, $\\downarrow$ below it, $\\uparrow$ above it; for FVA, $\\times$ means no possible flux lies in it. ' ...
@@ -110,6 +122,31 @@ fprintf('Whole body: male BMR %.0f -> %.0f, female %.0f -> %.0f kcal/day\n', W.m
 for n = 1:numel(B), fprintf('%-36s M: %-22s F: %s\n', B(n).label, B(n).male.verdict, B(n).female.verdict); end
 
 %% helpers -------------------------------------------------------------------------------
+function D = benchmarkFluxData(resPath)
+% Reaction ids, bounds and L2 fluxes of the fed and fasted models, read once from the
+% checkpoints of fastingWBM.m. posIsRelease records, per reaction and from the
+% stoichiometry, whether a positive flux is release out of the organ (into [bc], [csf],
+% [u] or [a]).
+load(fullfile(resPath, 'ckpt_feasibleModels.mat'), 'maleFed', 'femaleFed', 'maleFast', 'femaleFast');
+load(fullfile(resPath, 'ckpt_fluxL2.mat'), 'fluxFedM', 'fluxFedF', 'fluxFastM', 'fluxFastF');
+sets = {'male', maleFed, maleFast, fluxFedM, fluxFastM; 'female', femaleFed, femaleFast, fluxFedF, fluxFastF};
+for s = 1:2
+    mFed = sets{s, 2};  mFast = sets{s, 3};
+    d = struct('rxns', {mFast.rxns}, 'lbFed', mFed.lb, 'ubFed', mFed.ub, 'lbFast', mFast.lb, 'ubFast', mFast.ub, ...
+        'vFed', full(sets{s, 4}), 'vFast', full(sets{s, 5}));
+    d.iO2  = find(strcmp(d.rxns, 'EX_o2[a]'), 1);
+    d.iCO2 = find(strcmp(d.rxns, 'EX_co2[a]'), 1);
+    d.posIsRelease = true(numel(d.rxns), 1);
+    for i = find(~cellfun(@isempty, regexp(d.rxns, '_EX_|^EX_', 'once')))'
+        mr  = find(mFast.S(:, i) ~= 0);
+        out = mr(~cellfun(@isempty, regexp(mFast.mets(mr), '\[(bc|csf|u|a)\]$', 'once')));
+        if isempty(out), continue; end
+        d.posIsRelease(i) = full(mFast.S(out(1), i)) > 0 || (numel(mr) == 1 && full(mFast.S(mr, i)) < 0);
+    end
+    D.(sets{s, 1}) = d;
+end
+end
+
 function v = plainVerdict(basal, fva, lit)
 tol = 1e-6 * max(1, max(abs(lit)));
 if fva(1) >= lit(1) - tol && fva(2) <= lit(2) + tol

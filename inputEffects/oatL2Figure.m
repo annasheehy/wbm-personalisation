@@ -4,7 +4,7 @@ function oatL2Figure(T, figPath, thesisFig)
 % BMR (right), Harvey and Harvetta. Physiological inputs and metabolites that changed BMR by
 % at least 5 kcal/day in either model get their own row, ordered by the mean absolute BMR
 % change; the other metabolites share one row showing the range of their values. Inputs with
-% a level without solution and the height-only check are shown last.
+% a level without solution are shown last; the height-only check is not shown.
 %
 % INPUT: T  oatL2Ranking.csv
 %
