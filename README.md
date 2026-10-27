@@ -2,8 +2,6 @@
 
 MATLAB code for testing how physiological data, blood metabolomics, fasting and physical activity change the predictions of the Harvey and Harvetta whole-body metabolic models (WBMs).
 
-This is the code for Chapter 5 of the PhD thesis of Anna Sheehy (University of Galway), *Testing the personalisation of whole-body metabolic models: physiology, blood metabolomics, fasting and physical activity* (Anna Sheehy and Ines Thiele). The chapter:
-
 - varies physiological parameters (body weight, heart rate, haematocrit, glomerular filtration rate, height, urine creatinine) across the ranges tested and measures their effect on predicted fluxes and basal metabolic rate (BMR);
 - personalises the models with synthetic blood profiles of 26 metabolites, tests feasibility, finds why models fail and tests a fix;
 - builds fasted and active versions of the models and compares their predictions with fluxes measured in humans.
@@ -11,7 +9,7 @@ This is the code for Chapter 5 of the PhD thesis of Anna Sheehy (University of G
 ## Requirements
 
 - MATLAB (R2020b was used)
-- [COBRA Toolbox](https://github.com/opencobra/cobratoolbox) (commit 91c8cbf27 was used), which provides Harvey and Harvetta 1.03d (`loadPSCMfile`) and the PSCM toolbox functions
+- [COBRA Toolbox](https://github.com/opencobra/cobratoolbox), which provides Harvey and Harvetta 1.03d (`loadPSCMfile`) and the PSCM toolbox functions
 - Gurobi (13.0.0 was used) for LP and QP
 
 The COBRA Toolbox functions `persWBM`, `persWBMmetabolomics`, `physiologicalConstraintsHMDBbased` and `calcOrganFract` are called unchanged. Two unit errors found in this work are fixed in the COBRA Toolbox (branch `ch5-bugfixes`, to be merged into `develop`): `individualizedLabReport` cardiac output options 3 to 5 returned L/day where mL/min is used, and `persWBMmetabolomics` read urine concentrations in µmol/L as µmol per mmol creatinine. `heightCardiacOutput.m` uses the corrected option 4; the chapter uses blood metabolites only.
