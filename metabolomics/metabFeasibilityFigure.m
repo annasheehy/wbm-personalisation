@@ -2,7 +2,8 @@ function pct = metabFeasibilityFigure(feas, fixTest, windows, figPath, thesisFig
 % Figure of metabolomicsPersonalisation.m (metabC_feasibility): feasible personalised models
 % (%) at each measured concentration allowance in Harvey (left) and Harvetta (right), as
 % built by persWBMmetabolomics and with the measurement given priority where a personalised
-% bound crossed a fixed bound, each without and with the resting brain and heart ATP demands.
+% bound crossed a fixed bound. Feasibility with the resting brain and heart ATP demands
+% (feasibleFloors) was identical and is returned but not drawn.
 %
 % INPUT:  feas     one row per sex, profile and allowance (feasibility.csv)
 %         fixTest  models with crossed bounds, retested with the measurement given priority (fixTest.csv)
@@ -11,13 +12,11 @@ function pct = metabFeasibilityFigure(feas, fixTest, windows, figPath, thesisFig
 % Anna Sheehy 2026.
 
 sexes = {'male', 'female'};  sexLab = {'Harvey', 'Harvetta'};
-c1 = [0 114 178] / 255;  c2 = [0 158 115] / 255;                % Okabe-Ito blue, green
-colours = [c1; c1 * 0.45 + 0.55; c2; c2 * 0.45 + 0.55];
-serLab = {'As built', 'As built, with brain and heart ATP demands', ...
-          'Measurement given priority', 'Measurement given priority, with brain and heart ATP demands'};
+colours = [0 114 178; 0 158 115] / 255;                         % Okabe-Ito blue, green
+serLab = {'As built', 'Measurement given priority'};
 labW = compose('\\pm%d%%', round(100 * windows));
 pct = struct();
-h = figure('Units', 'centimeters', 'Position', [2 2 16 7], 'Color', 'w');
+h = figure('Units', 'centimeters', 'Position', [2 2 16 6.5], 'Color', 'w');
 tiledlayout(1, 2, 'TileSpacing', 'compact', 'Padding', 'compact');
 for k = 1:2
     s = sexes{k};  P = zeros(numel(windows), 4);
@@ -30,8 +29,8 @@ for k = 1:2
     end
     pct.(s) = P;
     nexttile;
-    b = bar(categorical(labW, labW), P, 'BarWidth', 0.85);
-    for j = 1:4, b(j).FaceColor = colours(j, :); end
+    b = bar(categorical(labW, labW), P(:, [1 3]), 'BarWidth', 0.7);
+    for j = 1:2, b(j).FaceColor = colours(j, :); end
     set(gca, 'FontSize', 8, 'TickDir', 'out', 'Box', 'off', 'YLim', [0 105]);
     if k == 1, ylabel('Feasible models (%)'); else, set(gca, 'YTickLabel', []); end
     xlabel('Measured concentration allowance');

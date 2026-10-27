@@ -34,12 +34,12 @@ if isempty(CBT_LP_SOLVER), initCobraToolbox(false); end
 changeCobraSolver('gurobi', 'LP', 0);  changeCobraSolver('gurobi', 'QP', 0);
 
 S  = load(fullfile(fastPath, 'ckpt_feasibleModels.mat'), 'maleFed', 'femaleFed');
-P  = load(fullfile(fastPath, 'ckpt_HMDBconstrained.mat'), 'ipMale', 'ipFemale');
+IPd = load(fullfile(fastPath, 'ckpt_HMDBconstrained.mat'), 'ipMale', 'ipFemale');
 Rw = load(fullfile(fastPath, 'ckpt_rawModels.mat'), 'harvey', 'harvetta');
 ctrl = struct('male', S.maleFed, 'female', S.femaleFed);
-ipar = struct('male', P.ipMale, 'female', P.ipFemale);
+ipar = struct('male', IPd.ipMale, 'female', IPd.ipFemale);
 raw  = struct('male', Rw.harvey, 'female', Rw.harvetta);
-clear S P Rw
+clear S IPd Rw
 EUAverageDietNew;                                                     % defines Diet
 lims = healthyPhysiologyRanges(fullfile(P.references, 'healthyPhysiologyRanges.csv'), ipar);
 

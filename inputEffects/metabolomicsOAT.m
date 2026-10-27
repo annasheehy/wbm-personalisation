@@ -45,7 +45,7 @@ objRxn = 'Whole_body_objective_rxn';
 % constraint uses).
 physInputs = {'bodyWeight', 'Body weight'; 'Height', 'Height'; 'HeartRate', 'Heart rate'; ...
               'Hematocrit', 'Haematocrit'; 'GlomerularFiltrationRate', 'GFR'; ...
-              'HeightBSA', 'Height (surface-area cardiac output)'};
+              'HeightBSA', 'Height (surface-area cardiac output)'; 'UrineCreatinine', 'Urine creatinine'};
 bsaDuBois = @(W, H) 0.007184 * W^0.425 * H^0.725;                  % m2; W kg, H cm
 readout = {'Liver_EX_glc_D(e)_[bc]',     'Liver glucose'
            'Brain_EX_glc_D(e)_[csf]',    'Brain glucose'
@@ -79,14 +79,14 @@ if ~usejava('desktop'), set(0, 'DefaultFigureVisible', 'off'); end
 
 sexes = {'male', 'female'};
 S  = load(fullfile(fastPath, 'ckpt_feasibleModels.mat'), 'maleFed', 'femaleFed');
-P  = load(fullfile(fastPath, 'ckpt_HMDBconstrained.mat'), 'ipMale', 'ipFemale');
+IPd = load(fullfile(fastPath, 'ckpt_HMDBconstrained.mat'), 'ipMale', 'ipFemale');
 Rw = load(fullfile(fastPath, 'ckpt_rawModels.mat'), 'harvey', 'harvetta');
 Mp = load(fullfile(resPath, 'ckpt_map.mat'), 'map');
 ctrl = struct('male', S.maleFed, 'female', S.femaleFed);
-ipar = struct('male', P.ipMale, 'female', P.ipFemale);
+ipar = struct('male', IPd.ipMale, 'female', IPd.ipFemale);
 raw  = struct('male', Rw.harvey, 'female', Rw.harvetta);
 map  = Mp.map;
-clear S P Rw Mp
+clear S IPd Rw Mp
 EUAverageDietNew;                                                 % defines Diet
 
 panel  = healthyReferencePanel(panelFile);
@@ -248,7 +248,7 @@ end
 fclose(fid);
 
 % Figure: inputs x read-outs, Harvey and Harvetta (small metabolite effects in one row)
-oatEffectsFigure(long, T, figPath, thesisFig);
+oatEffectsFigure(long, T, figPath, thesisFig, {'Urine creatinine'});   % reported in the text: its urea effect needs its own scale
 fprintf('OAT: ranking in %s\n', fullfile(resPath, 'oatRanking.csv'));
 
 

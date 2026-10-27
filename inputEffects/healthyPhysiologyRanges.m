@@ -7,6 +7,10 @@ function [lims, T] = healthyPhysiologyRanges(sourceFile, ipar)
 %            are pooled, and the range is mean +/- 1.96 SD
 %   meanP5P95  v1 = mean, v2/v3 = 5th/95th percentile, n; SD = (v3 - v2) / (2 * 1.645),
 %            then pooled as meanSD (normal distribution assumed)
+%   lognP10P90  v1/v3 = 10th/90th percentile (v2 = median, recorded only), n; a log-normal
+%            per row through its 10th and 90th percentile, rows pooled by n, and the range
+%            is the 10th to 90th percentile of the pooled distribution (the reference
+%            range of the source)
 % Units converted to the model's: kg/m2 (BMI) -> kg at the reference height;
 % mL/min/1.73m2 -> mL/min with the Du Bois body surface area of the reference individual.
 %
@@ -34,6 +38,10 @@ for k = 1:max(g)
             N = sum(R.n);  m = sum(R.n .* R.v1) / N;
             sd = sqrt(sum(R.n .* (sdRow.^2 + (R.v1 - m).^2)) / N);
             lim = m + [-z, z] * sd;
+        case 'lognP10P90'
+            mu = (log(R.v1) + log(R.v3)) / 2;  sg = (log(R.v3) - log(R.v1)) / (2 * 1.281552);  w = R.n / sum(R.n);
+            cdf = @(x) sum(w .* 0.5 .* erfc(-(log(x) - mu) ./ (sg * sqrt(2))));
+            lim = [fzero(@(x) cdf(x) - 0.10, median(R.v1)), fzero(@(x) cdf(x) - 0.90, median(R.v3))];
         otherwise
             error('healthyPhysiologyRanges: unknown stat ''%s'' for %s', R.stat{1}, field{k});
     end

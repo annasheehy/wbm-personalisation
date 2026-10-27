@@ -4,7 +4,7 @@ MATLAB code for testing how physiological data, blood metabolomics, fasting and 
 
 This is the code for Chapter 5 of the PhD thesis of Anna Sheehy (University of Galway), *Testing the personalisation of whole-body metabolic models: physiology, blood metabolomics, fasting and physical activity* (Anna Sheehy and Ines Thiele). The chapter:
 
-- varies physiological parameters (body weight, heart rate, haematocrit, glomerular filtration rate, height) across the ranges tested and measures their effect on predicted fluxes and basal metabolic rate (BMR);
+- varies physiological parameters (body weight, heart rate, haematocrit, glomerular filtration rate, height, urine creatinine) across the ranges tested and measures their effect on predicted fluxes and basal metabolic rate (BMR);
 - personalises the models with synthetic blood profiles of 26 metabolites, tests feasibility, finds why models fail and tests a fix;
 - builds fasted and active versions of the models and compares their predictions with fluxes measured in humans.
 
@@ -55,6 +55,7 @@ All scripts start from the models built by `fastingWBM.m`.
 | 6 | `inputEffects/oatBMRdecomposition.m` | BMR change with heart rate and haematocrit, by reaction and organ |
 | 7 | `inputEffects/heightCardiacOutput.m` | models with cardiac output from height and personalised blood volume |
 | 8 | `active/activeWBM.m` | table of extra muscle work and the run |
+| 9 | `fasting/fastingUrineCreatinine.m` | fasted models with urine creatinine at the low and high end of its range: feasibility, BMR and urinary urea excretion |
 
 `fasting/fastingWBM_investigations.m` and `fasting/femaleBrainATP_investigation.m` contain the tests of amino acid release and phosphate uptake that set the fasted state.
 

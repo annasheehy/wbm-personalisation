@@ -71,11 +71,11 @@ fprintf('Part 0 - results: %s\n', resPath);
 % control model is the same model passed through the engine with no data, which leaves
 % every bound unchanged.
 S = load(fullfile(fastPath, 'ckpt_feasibleModels.mat'), 'maleFed', 'femaleFed');
-P = load(fullfile(fastPath, 'ckpt_HMDBconstrained.mat'), 'ipMale', 'ipFemale');
+IPd = load(fullfile(fastPath, 'ckpt_HMDBconstrained.mat'), 'ipMale', 'ipFemale');
 sexes = {'male', 'female'};
 ctrl = struct('male', S.maleFed, 'female', S.femaleFed);
-ipar = struct('male', P.ipMale, 'female', P.ipFemale);
-clear S P
+ipar = struct('male', IPd.ipMale, 'female', IPd.ipFemale);
+clear S IPd
 for s = sexes
     assert(isfield(ipar.(s{1}), 'sex') && strcmpi(ipar.(s{1}).sex, s{1}), ...
         'IndividualParameters.sex missing or wrong for %s', s{1});

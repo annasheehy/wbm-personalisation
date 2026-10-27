@@ -9,7 +9,7 @@ function model = setFastingConstraints(model, sex, varargin)
 % FEASIBLE fasting whole-body model:
 %   1. storage release enabled (organ sinks lb<0, ub=0)  [setFeedingFastingConstraints]
 %      and dietary intake closed;
-%   2. dietary ions capped at EU-average-diet provision (all except phosphate);
+%   2. water and 11 dietary ions freely available (all except phosphate);
 %   2b. endogenous phosphate (bone Pi — the model has no bone organ);
 %   3. hepatic glycogen release enabled (sex-specific, no synthesis);
 %   4. endogenous intestinal choline uptake from blood (sex-specific).
@@ -28,10 +28,12 @@ function model = setFastingConstraints(model, sex, varargin)
 %                            female -754 (Jensen 2011, Olson 1984). ub set to 0.
 %   'choline'    sex         sIEC_EX_chol(e)_[bc] uptake lb from blood; default
 %                            male -2 / female -6.
-%   'ionCaps'    {11x2}      Diet_EX_<ion>[d] uptake caps {rxn, lb}; lb = -EU-average
-%                            provision (mmol/day; from EUAverageDietNew). All 11
-%                            non-phosphate ions; Part 5 confirmed none bind under
-%                            the resting brain floor.
+%   'ionCaps'    {11x2}      Diet_EX_<ion>[d] uptake limits {rxn, lb}; default -1e6 for
+%                            water and all 11 non-phosphate ions, as in the fasted
+%                            models of the thesis. To cap them at the EU-average-diet
+%                            provision instead, pass euAverageIonCaps(); the basal
+%                            flux distribution then takes up less sodium, potassium
+%                            and sulfate, so BMR and fluxes change.
 %   'phosphate'  -1e6        Diet_EX_pi[d] lb — endogenous phosphate release (bone/
 %                            tissue) during fasting; NOT dietary. REQUIRED to meet the
 %                            resting brain ATP floor: the model has no bone organ, so
@@ -55,11 +57,8 @@ p = inputParser;
 addParameter(p, 'aaRelease', -40,  @(x) isnumeric(x) && isscalar(x));
 addParameter(p, 'glycogen',  NaN,  @(x) isnumeric(x) && isscalar(x));   % NaN -> sex default
 addParameter(p, 'choline',   NaN,  @(x) isnumeric(x) && isscalar(x));   % NaN -> sex default
-addParameter(p, 'ionCaps', { ...     % lb = -EU-average-diet provision (mmol/day), from EUAverageDietNew
-    'Diet_EX_h2o[d]', -165892.3425;  'Diet_EX_na1[d]', -172.4463;  'Diet_EX_k[d]',  -83.4338; ...
-    'Diet_EX_cl[d]',    -187.7787;   'Diet_EX_so4[d]',        0;    'Diet_EX_zn2[d]',  -0.1510; ...
-    'Diet_EX_ca2[d]',    -18.5491;   'Diet_EX_cu2[d]',   -0.0357;   'Diet_EX_mn2[d]',  -0.0747; ...
-    'Diet_EX_fe2[d]',     -0.1092;   'Diet_EX_fe3[d]',   -0.1092}, @(x) iscell(x) && size(x,2) == 2);
+openIons = euAverageIonCaps();  openIons(:, 2) = {-1e6};           % freely available
+addParameter(p, 'ionCaps', openIons, @(x) iscell(x) && size(x,2) == 2);
 addParameter(p, 'phosphate', -1e6, @(x) isnumeric(x) && isscalar(x));   % endogenous Pi (bone)
 parse(p, varargin{:});
 opt = p.Results;
@@ -73,8 +72,7 @@ if isnan(opt.choline),  opt.choline  = pickSex(sex,   -2,   -6); end
 %    storage upper bound is fixed at 0 there; abs(aaRelease) is a harmless filler.)
 model = setFeedingFastingConstraints(model, 'fasting', opt.aaRelease, abs(opt.aaRelease));
 
-% 2. dietary ions capped at EU-average-diet provision (from EUAverageDietNew). The
-%    Part-5 investigation confirmed none of these bind under the resting brain floor.
+% 2. water and dietary ions (freely available by default; see 'ionCaps').
 %    PHOSPHATE is the exception -> endogenous (handled in 2b).
 ionRxns = opt.ionCaps(:,1);
 present = ismember(ionRxns, model.rxns);

@@ -43,10 +43,10 @@ changeCobraSolver('gurobi', 'LP', 0);
 changeCobraSolver('gurobi', 'QP', 0);
 
 S = load(fullfile(fastPath, 'ckpt_feasibleModels.mat'), 'maleFed', 'femaleFed');
-P = load(fullfile(fastPath, 'ckpt_HMDBconstrained.mat'), 'ipMale', 'ipFemale');
+IPd = load(fullfile(fastPath, 'ckpt_HMDBconstrained.mat'), 'ipMale', 'ipFemale');
 ctrl = struct('male', S.maleFed, 'female', S.femaleFed);
-ipar = struct('male', P.ipMale, 'female', P.ipFemale);
-clear S P
+ipar = struct('male', IPd.ipMale, 'female', IPd.ipFemale);
+clear S IPd
 sexes = {'male', 'female'};
 
 res = struct('male', struct(), 'female', struct());

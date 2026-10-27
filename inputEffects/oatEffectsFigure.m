@@ -1,4 +1,4 @@
-function oatEffectsFigure(long, rank, figPath, thesisFig)
+function oatEffectsFigure(long, rank, figPath, thesisFig, exclude)
 % Figure of metabolomicsOAT.m (metabG_oatHeatmap): effect of each personalisation input on
 % the feasible range of the 11 read-outs, Harvey (left) and Harvetta (right). Inputs with an
 % effect of at least 0.01 on any read-out get their own row; the other metabolites share one
@@ -6,14 +6,18 @@ function oatEffectsFigure(long, rank, figPath, thesisFig)
 % check are shown last. Cells give the effect (shift in feasible range / control range),
 % labelled to one decimal where it is at least 0.05.
 %
-% INPUT: long  oatEffects_long.csv (sex, input, kind, readout, effect, ...)
-%        rank  oatRanking.csv (rows ordered by score)
+% INPUT: long     oatEffects_long.csv (sex, input, kind, readout, effect, ...)
+%        rank     oatRanking.csv (rows ordered by score)
+%        exclude  (optional) inputs reported separately, e.g. {'Urine creatinine'}, whose
+%                 effect on urinary urea is too large for a shared colour scale
 %
 % Anna Sheehy 2026.
 
 sexes = {'male', 'female'};  sexLab = {'Harvey', 'Harvetta'};
 long.sex = string(long.sex);  long.input = string(long.input);  long.readout = string(long.readout);
 readouts = unique(long.readout, 'stable');  nR = numel(readouts);
+if nargin < 5, exclude = {}; end
+rank = rank(~ismember(string(rank.input), string(exclude)), :);
 inputs = string(rank.input);  kinds = string(rank.kind);
 E = nan(numel(inputs), nR, 2);
 for k = 1:2
