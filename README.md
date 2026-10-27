@@ -38,6 +38,7 @@ The project folder holds the inputs and receives the outputs:
 | `metabolomics/` | personalisation with synthetic blood metabolite profiles: bounds changed, feasibility, crossed bounds |
 | `inputEffects/` | effect of each physiological parameter and metabolite on its own; height through cardiac output and blood volume |
 | `active/` | one hour of running |
+| `supplement/` | supplementary tables (LaTeX appendix) and Excel workbooks of the inputs and results |
 
 ## Run order
 
@@ -54,6 +55,7 @@ All scripts start from the models built by `fastingWBM.m`.
 | 7 | `inputEffects/oatBMRdecomposition.m` | BMR change with heart rate and haematocrit, by reaction and organ |
 | 8 | `inputEffects/heightCardiacOutput.m` | models with cardiac output from height and personalised blood volume |
 | 9 | `active/activeWBM.m` | table of extra muscle work and the run |
+| 10 | `supplement/supplementaryMaterial.m` | appendix Tables S1-S9 (`appendix_chapter5.tex`) and the Excel workbooks of inputs and results, from the saved results of steps 1-9 |
 
 `metabolomicsOAT.m` and `heightCardiacOutput.m` save one file per case and skip finished cases, so they can be run in several MATLAB sessions at once (see the header of each script).
 

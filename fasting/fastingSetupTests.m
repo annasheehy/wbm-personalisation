@@ -5,7 +5,8 @@
 % used for BMR (brain 3500, heart 1000 mmol/day).
 %   1. release limit of each amino-acid store: 20, 30, 40 mmol/day (aaRelease)
 %   2. phosphate uptake capped at its dietary provision (EUAverageDietNew) or left open
-% Uses the lifted base models of fastingWBM.m (ckpt_liftedBase.mat). NaN = infeasible
+% Uses the lifted base models of fastingWBM.m (ckpt_liftedBase.mat); saves
+% results/fasting/fastingSetupTests.csv. NaN = infeasible
 % (e.g. Harvey at 20 mmol/day). Results: Harvetta brain 1514 / 3320 / 4587 at 20 / 30 / 40,
 % Harvey 3636 at 30; Harvetta with phosphate capped at 14.2 mmol/day 2464, open 4587.
 %
@@ -21,18 +22,24 @@ base = struct('male', Lf.maleL, 'female', Lf.femaleL);
 EUAverageDietNew;                                                    % defines Diet
 dietPi = -str2double(Diet{strcmp(Diet(:, 1), 'Diet_EX_pi[d]'), 2});  % mmol/day
 
+out = cell(0, 5);                                                    % sex, aaRelease, phosphate limit, brain, heart
 for s = {'male', 'female'}
     for aa = [-20 -30 -40]
         [brain, heart] = maxOrganATP(setFastingConstraints(base.(s{1}), s{1}, 'aaRelease', aa));
         fprintf('%-6s amino-acid release %d: brain ATP max %.0f, heart ATP max %.0f mmol/day\n', ...
             s{1}, -aa, brain, heart);
+        out(end+1, :) = {s{1}, -aa, Inf, brain, heart}; %#ok<SAGROW>
     end
 end
 for piLimit = [dietPi -1e6]
     [brain, heart] = maxOrganATP(setFastingConstraints(base.female, 'female', 'phosphate', piLimit));
     fprintf('female phosphate uptake limit %g: brain ATP max %.0f, heart ATP max %.0f mmol/day\n', ...
         -piLimit, brain, heart);
+    out(end+1, :) = {'female', 40, -piLimit, brain, heart}; %#ok<SAGROW>
 end
+T = cell2table(out, 'VariableNames', {'sex', 'aaRelease', 'phosphateLimit', 'brainATPmax', 'heartATPmax'});
+T.phosphateLimit(T.phosphateLimit >= 1e6) = Inf;                     % open
+writetable(T, fullfile(resPath, 'fastingSetupTests.csv'));
 
 function [brain, heart] = maxOrganATP(m)
 % largest brain and heart ATP hydrolysis (mmol/day) with whole-body maintenance fixed to 1;

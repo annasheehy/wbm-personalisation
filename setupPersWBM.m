@@ -8,7 +8,7 @@ function setupPersWBM(projectFolder)
 % Anna Sheehy 2026.
 
 here = fileparts(mfilename('fullpath'));
-for d = {'common', 'inputEffects', 'metabolomics', 'fasting', 'active'}
+for d = {'common', 'inputEffects', 'metabolomics', 'fasting', 'active', 'supplement'}
     addpath(fullfile(here, d{1}));
 end
 if nargin > 0, setenv('PERSWBM_PROJECT', projectFolder); end

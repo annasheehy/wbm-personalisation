@@ -3,7 +3,8 @@
 % Decomposes the BMR change (QP-FBA, low -> high input value) by organ and by reaction,
 % using the ATP consumption counted by calculateModelBMR, and prints whole-body O2 uptake,
 % CO2 output and the brain and heart ATP demands. Reads the saved jobs of metabolomicsOAT.m
-% (oatMode 'l2'); no solves.
+% (oatMode 'l2'); no solves. Saves the change by organ and the whole-body read-outs in
+% results/metabolomics/oatBMRdecomposition.csv.
 %
 % Anna Sheehy 2026.
 
@@ -13,6 +14,8 @@ inputs = [3 4];                                           % physInputs of metabo
 M = load(fullfile(P.results, 'fasting', 'ckpt_feasibleModels.mat'), 'maleFed', 'femaleFed');
 mods = struct('male', M.maleFed, 'female', M.femaleFed);
 kc = 64 * 0.239006 / 1000;                                % mmol ATP/day -> kcal/day
+inputName = {3, 'Heart rate'; 4, 'Haematocrit'};
+out = cell(0, 6);                                         % sex, input, item, low, high, change
 for s = {'male', 'female'}
     m = mods.(s{1});  n = numel(m.rxns);
     atp = contains(m.mets, '_atp[');
@@ -28,6 +31,9 @@ for s = {'male', 'female'}
         dc = cons(vH) - cons(vL);
         fprintf('\n-- input %d: %.3g -> %.3g; BMR %.0f -> %.0f kcal/day\n', id, lo.val, hi.val, lo.kcal, hi.kcal);
         [u, ~, j] = unique(org);  byOrg = accumarray(j, dc) * kc;
+        nm = inputName{[inputName{:, 1}] == id, 2};
+        for q = 1:numel(u), out(end+1, :) = {s{1}, nm, u{q}, NaN, NaN, byOrg(q)}; end %#ok<AGROW>
+        out(end+1, :) = {s{1}, nm, 'BMR (kcal/day)', lo.kcal, hi.kcal, hi.kcal - lo.kcal}; %#ok<AGROW>
         [~, o] = sort(abs(byOrg), 'descend');
         fprintf('   BMR change by organ (kcal/day): %s\n', strjoin(compose('%s %+.0f', string(u(o(1:8))), byOrg(o(1:8))), ', '));
         [~, o] = sort(abs(dc), 'descend');
@@ -36,7 +42,12 @@ for s = {'male', 'female'}
         end
         for x = {'EX_o2[a]', 'EX_co2[a]', 'Heart_DM_atp_c_', 'Brain_DM_atp_c_'}
             r = find(strcmp(m.rxns, x{1}));
-            if ~isempty(r), fprintf('   %-20s %10.1f -> %10.1f\n', x{1}, vL(r), vH(r)); end
+            if ~isempty(r)
+                fprintf('   %-20s %10.1f -> %10.1f\n', x{1}, vL(r), vH(r));
+                out(end+1, :) = {s{1}, nm, x{1}, vL(r), vH(r), vH(r) - vL(r)}; %#ok<AGROW>
+            end
         end
     end
 end
+T = cell2table(out, 'VariableNames', {'sex', 'input', 'item', 'low', 'high', 'change'});
+writetable(T, fullfile(P.results, 'metabolomics', 'oatBMRdecomposition.csv'));
